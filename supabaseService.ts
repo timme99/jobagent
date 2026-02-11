@@ -99,7 +99,7 @@ export async function saveJobMatches(
     reasoning: m.reasoning,
     link: m.link,
     status: m.status ?? 'pending',
-    source: 'manual',
+    source: m.source || 'manual',
   }));
   const { error } = await supabase.from('job_matches').upsert(rows, { onConflict: 'id' });
   if (error) throw error;
@@ -148,6 +148,7 @@ function rowToJobMatch(row: any): JobMatch {
     score: row.score ?? 0,
     reasoning: row.reasoning ?? { pros: [], cons: [], riskFactors: [] },
     link: row.link ?? '#',
+    source: row.source,
     status: row.status,
   };
 }

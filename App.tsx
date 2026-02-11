@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { MasterProfile, SearchStrategy, JobMatch, AppView } from './types';
 import { synthesizeProfile, refineStrategy, scoreJobMatch, fetchLiveJobs } from './geminiService';
+import { fetchArbeitsagenturJobs, fetchJSearchJobs } from './jobSources';
 import { AuthProvider, useAuth } from './AuthProvider';
 import AuthPage from './AuthPage';
 import * as db from './supabaseService';
@@ -181,23 +182,50 @@ function AppContent() {
   const handleScan = async () => {
     if (!profile || !strategy) return;
     setIsLoading(true);
-    setLoadingText('Searching for live job postings via Google...');
+    setLoadingText('Searching across multiple job sources...');
     try {
       const keywords = scanKeywords || profile.skills?.[0] || 'software engineer';
-      const liveJobs = await fetchLiveJobs(keywords, scanLocation);
-      
-      setLoadingText(`Analyzing ${liveJobs.length} potential matches (quota-safe mode)...`);
-      
+
+      // Fetch from all three sources in parallel
+      const [geminiJobs, arbeitsagenturJobs, jsearchJobs] = await Promise.all([
+        fetchLiveJobs(keywords, scanLocation).catch((err) => {
+          console.error('Gemini job fetch failed:', err);
+          return [] as any[];
+        }),
+        fetchArbeitsagenturJobs(keywords, scanLocation).catch((err) => {
+          console.error('Arbeitsagentur job fetch failed:', err);
+          return [] as any[];
+        }),
+        fetchJSearchJobs(keywords, scanLocation).catch((err) => {
+          console.error('JSearch job fetch failed:', err);
+          return [] as any[];
+        }),
+      ]);
+
+      // Tag Gemini results with their source
+      const taggedGeminiJobs = geminiJobs.map((j: any) => ({ ...j, source: 'linkedin' }));
+
+      const allJobs = [...taggedGeminiJobs, ...arbeitsagenturJobs, ...jsearchJobs];
+
+      if (allJobs.length === 0) {
+        alert('No jobs found from any source. Try different keywords or location.');
+        setIsLoading(false);
+        return;
+      }
+
+      setLoadingText(`Analyzing ${allJobs.length} jobs from ${[geminiJobs.length && 'LinkedIn', arbeitsagenturJobs.length && 'Arbeitsagentur', jsearchJobs.length && 'JSearch'].filter(Boolean).join(', ')}...`);
+
       // Serial processing instead of Promise.all to respect RPM (Requests Per Minute) limits
       const scoredResults: JobMatch[] = [];
-      for (let i = 0; i < liveJobs.length; i++) {
-        setLoadingText(`Scoring match ${i + 1} of ${liveJobs.length}...`);
-        const result = await scoreJobMatch(profile, strategy, liveJobs[i]);
+      for (let i = 0; i < allJobs.length; i++) {
+        setLoadingText(`Scoring match ${i + 1} of ${allJobs.length}...`);
+        const result = await scoreJobMatch(profile, strategy, allJobs[i]);
+        result.source = allJobs[i].source;
         scoredResults.push(result);
         // Subtle delay to avoid hitting rate limits on bursts
-        if (i < liveJobs.length - 1) await new Promise(r => setTimeout(r, 800));
+        if (i < allJobs.length - 1) await new Promise(r => setTimeout(r, 800));
       }
-      
+
       const sorted = scoredResults.sort((a, b) => b.score - a.score);
       setMatches(sorted);
       await db.saveJobMatches(userId, sorted);
@@ -868,6 +896,15 @@ function JobCard({
             <div className={`px-4 py-2 rounded-2xl border-2 text-sm font-black shadow-sm ${getScoreColor(match.score)}`}>
               {match.score}% Score
             </div>
+            {match.source && (
+              <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                match.source === 'arbeitsagentur' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                match.source === 'jsearch' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                'bg-violet-50 text-violet-600 border-violet-100'
+              }`}>
+                {match.source === 'arbeitsagentur' ? 'Arbeitsagentur' : match.source === 'jsearch' ? 'JSearch' : 'LinkedIn'}
+              </div>
+            )}
             {isShortlisted && (
               <div className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100">
                 Shortlisted
