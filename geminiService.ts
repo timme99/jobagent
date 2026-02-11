@@ -43,7 +43,7 @@ export const synthesizeProfile = async (
     prompt += "Ensure the output strictly follows the provided JSON schema. Combine all information into a single unified profile.";
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // Pro is better for complex synthesis
+      model: 'gemini-2.0-flash', // Fast and capable for synthesis
       contents: prompt,
       config: {
         tools: profileUrl ? [{ googleSearch: {} }] : [],
@@ -91,7 +91,7 @@ const VALID_LOCATION_PREFERENCES = ['remote', 'hybrid', 'onsite', 'flexible'] as
 export const refineStrategy = async (messyThoughts: string): Promise<SearchStrategy> => {
   return withRetry(async () => {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: `Convert these unstructured career preferences and "messy thoughts" into a rigorous Search Strategy: ${messyThoughts}`,
       config: {
         responseMimeType: "application/json",
@@ -131,7 +131,7 @@ export const scoreJobMatch = async (
   return withRetry(async () => {
     const description = jobData.description || 'No description provided';
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: `
         Act as an expert technical recruiter. Cross-reference this Profile and Search Strategy against the Job Description.
 
@@ -191,7 +191,7 @@ export const fetchLiveJobs = async (keywords: string, location: string): Promise
     // We use googleSearch tool here to find REAL LinkedIn job postings.
     // Switching to Pro for better search grounding accuracy.
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.0-flash',
       contents: `Search for real, currently active LinkedIn job postings for keywords: "${keywords}" in location: "${location}". 
                  You must find 5 authentic jobs. Extract their REAL URLs, job titles, company names, and full descriptions.
                  Return them as a JSON array of objects. Do not hallucinate URLs; only use valid links found during the search.`,
