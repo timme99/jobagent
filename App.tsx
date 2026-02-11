@@ -8,6 +8,7 @@ import {
   Search,
   Sparkles,
   ChevronDown,
+  ChevronRight,
   Loader2,
   AlertCircle,
   Clock,
