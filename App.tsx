@@ -848,15 +848,123 @@ function AppContent() {
               )}
             </div>
           )}
+
+          {view === 'legal' && (
+            <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
+              {/* Hobby Project Notice */}
+              <div className="flex items-center gap-3 p-5 bg-amber-50 rounded-3xl border border-amber-100 text-amber-800 text-sm font-medium">
+                <Info size={18} className="flex-shrink-0" />
+                <p>This is a <strong>private hobby project</strong> and is not operated for commercial purposes. No revenue is generated through this application.</p>
+              </div>
+
+              {/* Impressum */}
+              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+                <h3 className="text-2xl font-black text-slate-900 mb-6">Impressum</h3>
+                <p className="text-sm text-slate-500 mb-4">Angaben gem&auml;&szlig; &sect; 5 TMG</p>
+                <div className="text-slate-700 text-sm leading-relaxed space-y-1">
+                  <p className="font-bold">Maria Alejandra Diaz Linde</p>
+                  <p>Ob. Bismarckstra&szlig;e 93</p>
+                  <p>70197 Stuttgart</p>
+                  <p>Germany</p>
+                </div>
+                <h4 className="font-bold text-slate-900 mt-6 mb-2">Haftungsausschluss</h4>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Dieses Projekt ist ein privates Hobbyprojekt und wird nicht gewerblich betrieben. Es werden keine Einnahmen erzielt. Trotz sorgf&auml;ltiger inhaltlicher Kontrolle &uuml;bernehme ich keine Haftung f&uuml;r die Inhalte externer Links. F&uuml;r den Inhalt der verlinkten Seiten sind ausschlie&szlig;lich deren Betreiber verantwortlich.
+                </p>
+              </section>
+
+              {/* Datenschutzerkl&auml;rung */}
+              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+                <h3 className="text-2xl font-black text-slate-900 mb-6">Datenschutzerkl&auml;rung</h3>
+                <p className="text-sm text-slate-500 mb-6">gem&auml;&szlig; Art. 13 DSGVO</p>
+
+                <div className="space-y-6 text-slate-700 text-sm leading-relaxed">
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">1. Verantwortliche Stelle</h4>
+                    <p>Maria Alejandra Diaz Linde<br />Ob. Bismarckstra&szlig;e 93, 70197 Stuttgart, Germany</p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">2. Art und Zweck der Datenverarbeitung</h4>
+                    <p>
+                      Diese Anwendung ist ein privates, nicht-kommerzielles Hobbyprojekt. Es werden folgende personenbezogene Daten verarbeitet:
+                    </p>
+                    <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600">
+                      <li><strong>E-Mail-Adresse</strong> &ndash; zur Authentifizierung und zum Versand von Job-Digest-E-Mails</li>
+                      <li><strong>Profildaten</strong> (Name, Berufserfahrung, F&auml;higkeiten) &ndash; zur KI-gest&uuml;tzten Jobanalyse und -bewertung</li>
+                      <li><strong>Sucheinstellungen</strong> (Suchbegriffe, Standort, Schwellenwerte) &ndash; zur Personalisierung der Jobsuche</li>
+                      <li><strong>Job-Matches</strong> (Titel, Unternehmen, Bewertungen) &ndash; zur Anzeige und Verwaltung von Suchergebnissen</li>
+                    </ul>
+                    <p className="mt-2">
+                      Rechtsgrundlage: Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch aktive Nutzung) und Art. 6 Abs. 1 lit. b DSGVO (Vertragserf&uuml;llung).
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">3. Drittanbieter und Daten&uuml;bermittlung</h4>
+                    <p>Folgende Drittanbieter werden genutzt:</p>
+                    <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600">
+                      <li><strong>Supabase</strong> (Cloud-Datenbank &amp; Authentifizierung) &ndash; Speicherung der Nutzerdaten</li>
+                      <li><strong>Google Gemini API</strong> &ndash; KI-basierte Profilanalyse und Jobbewertung</li>
+                      <li><strong>Bundesagentur f&uuml;r Arbeit API</strong> &ndash; Abfrage &ouml;ffentlicher Stellenangebote</li>
+                      <li><strong>JSearch / RapidAPI</strong> &ndash; Abfrage internationaler Stellenangebote</li>
+                      <li><strong>Resend</strong> &ndash; Versand von E-Mail-Benachrichtigungen</li>
+                    </ul>
+                    <p className="mt-2">
+                      Eine &Uuml;bermittlung in Drittl&auml;nder (z.B. USA) kann bei Nutzung dieser Dienste erfolgen. Grundlage hierf&uuml;r sind die jeweiligen Standardvertragsklauseln (SCCs) und angemessene Schutzma&szlig;nahmen der Anbieter.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">4. Speicherdauer</h4>
+                    <p>
+                      Ihre Daten werden gespeichert, solange Ihr Nutzerkonto besteht. Bei L&ouml;schung des Kontos werden alle zugeordneten Daten vollst&auml;ndig entfernt.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">5. Ihre Rechte</h4>
+                    <p>Sie haben gem&auml;&szlig; DSGVO folgende Rechte:</p>
+                    <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600">
+                      <li>Auskunftsrecht (Art. 15 DSGVO)</li>
+                      <li>Recht auf Berichtigung (Art. 16 DSGVO)</li>
+                      <li>Recht auf L&ouml;schung (Art. 17 DSGVO)</li>
+                      <li>Recht auf Einschr&auml;nkung der Verarbeitung (Art. 18 DSGVO)</li>
+                      <li>Recht auf Daten&uuml;bertragbarkeit (Art. 20 DSGVO)</li>
+                      <li>Widerspruchsrecht (Art. 21 DSGVO)</li>
+                    </ul>
+                    <p className="mt-2">
+                      Zur Aus&uuml;bung Ihrer Rechte wenden Sie sich bitte an die oben genannte verantwortliche Stelle.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">6. Cookies und Tracking</h4>
+                    <p>
+                      Diese Anwendung verwendet keine Tracking-Cookies, keine Analysetools und kein Werbetracking. Es werden lediglich technisch notwendige Session-Daten f&uuml;r die Authentifizierung gespeichert.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">7. Beschwerderecht</h4>
+                    <p>
+                      Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbeh&ouml;rde zu beschweren. Zust&auml;ndige Beh&ouml;rde ist der Landesbeauftragte f&uuml;r den Datenschutz und die Informationsfreiheit Baden-W&uuml;rttemberg.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
         </div>
       </main>
 
-      {/* Impressum Footer */}
+      {/* Footer */}
       <footer className="mt-16 mb-8 ml-auto mr-auto max-w-3xl px-8 text-center text-xs text-slate-400 leading-relaxed">
-        <div className="border-t border-slate-100 pt-6">
-          <p className="font-bold text-slate-500 mb-1">Impressum</p>
-          <p>Maria Alejandra Diaz Linde</p>
-          <p>Ob. Bismarckstra&szlig;e 93, 70197 Stuttgart, Germany</p>
+        <div className="border-t border-slate-100 pt-6 space-y-1">
+          <p>
+            <button onClick={() => setView('legal')} className="text-slate-500 hover:text-indigo-600 font-bold underline underline-offset-2 transition-colors">Impressum &amp; Datenschutz</button>
+          </p>
+          <p>Maria Alejandra Diaz Linde &middot; Stuttgart, Germany</p>
         </div>
       </footer>
 

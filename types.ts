@@ -36,4 +36,4 @@ export interface JobMatch {
   status?: 'accepted' | 'dismissed' | 'pending';
 }
 
-export type AppView = 'profile' | 'strategy' | 'scanner' | 'automation' | 'history';
+export type AppView = 'profile' | 'strategy' | 'scanner' | 'automation' | 'history' | 'legal';
