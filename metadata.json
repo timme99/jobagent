@@ -1,0 +1,5 @@
+{
+  "name": "JobScout AI - Strategic Career Matcher",
+  "description": "An advanced recruitment automation tool that synthesizes career trajectories into a Master Profile and uses Gemini AI to intelligently scan and score job opportunities based on complex strategic rules.",
+  "requestFramePermissions": []
+}
