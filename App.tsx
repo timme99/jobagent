@@ -8,6 +8,7 @@ import {
   Search,
   Sparkles,
   ChevronDown,
+  ChevronRight,
   Loader2,
   AlertCircle,
   Clock,
@@ -30,9 +31,11 @@ import {
 } from 'lucide-react';
 import { MasterProfile, SearchStrategy, JobMatch, AppView } from './types';
 import { synthesizeProfile, refineStrategy, scoreJobMatch, fetchLiveJobs } from './geminiService';
+import { fetchArbeitsagenturJobs, fetchJSearchJobs } from './jobSources';
 import { AuthProvider, useAuth } from './AuthProvider';
 import AuthPage from './AuthPage';
 import * as db from './supabaseService';
+import { supabase } from './supabaseClient';
 
 // ── Error Boundary ────────────────────────────────────────────────────
 interface ErrorBoundaryProps { children: ReactNode }
@@ -93,6 +96,10 @@ function AppContent() {
   const [automationEnabled, setAutomationEnabled] = useState(true);
   const [matchThreshold, setMatchThreshold] = useState(80);
   const [digestEmail, setDigestEmail] = useState(userEmail);
+
+  // Digest email state
+  const [digestSending, setDigestSending] = useState(false);
+  const [digestStatus, setDigestStatus] = useState<string | null>(null);
 
   // State for inputs
   const [profileUrl, setProfileUrl] = useState('');
@@ -181,23 +188,50 @@ function AppContent() {
   const handleScan = async () => {
     if (!profile || !strategy) return;
     setIsLoading(true);
-    setLoadingText('Searching for live job postings via Google...');
+    setLoadingText('Searching across multiple job sources...');
     try {
       const keywords = scanKeywords || profile.skills?.[0] || 'software engineer';
-      const liveJobs = await fetchLiveJobs(keywords, scanLocation);
-      
-      setLoadingText(`Analyzing ${liveJobs.length} potential matches (quota-safe mode)...`);
-      
+
+      // Fetch from all three sources in parallel
+      const [geminiJobs, arbeitsagenturJobs, jsearchJobs] = await Promise.all([
+        fetchLiveJobs(keywords, scanLocation).catch((err) => {
+          console.error('Gemini job fetch failed:', err);
+          return [] as any[];
+        }),
+        fetchArbeitsagenturJobs(keywords, scanLocation).catch((err) => {
+          console.error('Arbeitsagentur job fetch failed:', err);
+          return [] as any[];
+        }),
+        fetchJSearchJobs(keywords, scanLocation).catch((err) => {
+          console.error('JSearch job fetch failed:', err);
+          return [] as any[];
+        }),
+      ]);
+
+      // Tag Gemini results with their source
+      const taggedGeminiJobs = geminiJobs.map((j: any) => ({ ...j, source: 'linkedin' }));
+
+      const allJobs = [...taggedGeminiJobs, ...arbeitsagenturJobs, ...jsearchJobs];
+
+      if (allJobs.length === 0) {
+        alert('No jobs found from any source. Try different keywords or location.');
+        setIsLoading(false);
+        return;
+      }
+
+      setLoadingText(`Analyzing ${allJobs.length} jobs from ${[geminiJobs.length && 'LinkedIn', arbeitsagenturJobs.length && 'Arbeitsagentur', jsearchJobs.length && 'JSearch'].filter(Boolean).join(', ')}...`);
+
       // Serial processing instead of Promise.all to respect RPM (Requests Per Minute) limits
       const scoredResults: JobMatch[] = [];
-      for (let i = 0; i < liveJobs.length; i++) {
-        setLoadingText(`Scoring match ${i + 1} of ${liveJobs.length}...`);
-        const result = await scoreJobMatch(profile, strategy, liveJobs[i]);
+      for (let i = 0; i < allJobs.length; i++) {
+        setLoadingText(`Scoring match ${i + 1} of ${allJobs.length}...`);
+        const result = await scoreJobMatch(profile, strategy, allJobs[i]);
+        result.source = allJobs[i].source;
         scoredResults.push(result);
         // Subtle delay to avoid hitting rate limits on bursts
-        if (i < liveJobs.length - 1) await new Promise(r => setTimeout(r, 800));
+        if (i < allJobs.length - 1) await new Promise(r => setTimeout(r, 800));
       }
-      
+
       const sorted = scoredResults.sort((a, b) => b.score - a.score);
       setMatches(sorted);
       await db.saveJobMatches(userId, sorted);
@@ -207,6 +241,44 @@ function AppContent() {
       alert(isRateLimit ? 'Scanner hit API limits. Retrying later is recommended.' : 'Scanning failed. Try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSendDigest = async () => {
+    setDigestSending(true);
+    setDigestStatus(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setDigestStatus('Not authenticated. Please sign in again.');
+        return;
+      }
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-digest`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: digestEmail,
+            threshold: matchThreshold,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setDigestStatus(`Failed: ${data.error || 'Unknown error'}`);
+      } else if (data.success) {
+        setDigestStatus(`Digest sent to ${data.sentTo} (${data.matchCount} matches)`);
+      } else {
+        setDigestStatus(data.message || 'No matches to send.');
+      }
+    } catch (err: any) {
+      setDigestStatus(`Error: ${err.message}`);
+    } finally {
+      setDigestSending(false);
     }
   };
 
@@ -702,19 +774,34 @@ function AppContent() {
                   <div className="p-8 bg-indigo-900 text-white rounded-[2.5rem] shadow-2xl shadow-indigo-200 relative overflow-hidden">
                     <div className="relative z-10">
                       <h4 className="text-xl font-black mb-2 flex items-center gap-2">
-                        <Zap size={20} fill="currentColor" /> Autonomous Cloud Mode
+                        <Mail size={20} /> Send Digest Now
                       </h4>
                       <p className="text-indigo-200 text-sm mb-6 leading-relaxed">
-                        To enable true background automation, connect your Google Sheets via the Apps Script sidebar. This allows Scout to run even while you're offline.
+                        Send a test digest email with your current matches above the threshold. Uses Resend via Supabase Edge Functions.
                       </p>
                       <button
-                        onClick={() => window.open('https://script.google.com/', '_blank', 'noopener,noreferrer')}
-                        className="bg-white text-indigo-900 px-8 py-3 rounded-2xl font-black text-sm hover:bg-indigo-50 transition-colors shadow-lg"
+                        onClick={handleSendDigest}
+                        disabled={digestSending}
+                        className="bg-white text-indigo-900 px-8 py-3 rounded-2xl font-black text-sm hover:bg-indigo-50 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
                       >
-                        Connect Infrastructure
+                        {digestSending ? <><Loader2 size={16} className="animate-spin" /> Sending...</> : 'Send Test Digest'}
                       </button>
+                      {digestStatus && (
+                        <p className={`mt-4 text-sm font-bold ${digestStatus.startsWith('Failed') || digestStatus.startsWith('Error') || digestStatus.startsWith('Not') ? 'text-red-300' : 'text-green-300'}`}>
+                          {digestStatus}
+                        </p>
+                      )}
                     </div>
                     <div className="absolute right-[-10%] top-[-20%] w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl" />
+                  </div>
+
+                  <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
+                    <h4 className="text-lg font-black text-slate-900 mb-2 flex items-center gap-2">
+                      <Zap size={18} /> Autonomous Cloud Mode
+                    </h4>
+                    <p className="text-slate-500 text-sm leading-relaxed">
+                      For fully automated daily digests, deploy the <code className="bg-white px-2 py-0.5 rounded-lg text-xs font-bold border">send-digest</code> Edge Function and set up a cron schedule in your Supabase dashboard.
+                    </p>
                   </div>
                 </div>
               </section>
@@ -762,8 +849,125 @@ function AppContent() {
               )}
             </div>
           )}
+
+          {view === 'legal' && (
+            <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
+              {/* Hobby Project Notice */}
+              <div className="flex items-center gap-3 p-5 bg-amber-50 rounded-3xl border border-amber-100 text-amber-800 text-sm font-medium">
+                <Info size={18} className="flex-shrink-0" />
+                <p>This is a <strong>private hobby project</strong> and is not operated for commercial purposes. No revenue is generated through this application.</p>
+              </div>
+
+              {/* Impressum */}
+              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+                <h3 className="text-2xl font-black text-slate-900 mb-6">Impressum</h3>
+                <p className="text-sm text-slate-500 mb-4">Angaben gem&auml;&szlig; &sect; 5 TMG</p>
+                <div className="text-slate-700 text-sm leading-relaxed space-y-1">
+                  <p className="font-bold">Maria Alejandra Diaz Linde</p>
+                  <p>Ob. Bismarckstra&szlig;e 93</p>
+                  <p>70197 Stuttgart</p>
+                  <p>Germany</p>
+                </div>
+                <h4 className="font-bold text-slate-900 mt-6 mb-2">Haftungsausschluss</h4>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Dieses Projekt ist ein privates Hobbyprojekt und wird nicht gewerblich betrieben. Es werden keine Einnahmen erzielt. Trotz sorgf&auml;ltiger inhaltlicher Kontrolle &uuml;bernehme ich keine Haftung f&uuml;r die Inhalte externer Links. F&uuml;r den Inhalt der verlinkten Seiten sind ausschlie&szlig;lich deren Betreiber verantwortlich.
+                </p>
+              </section>
+
+              {/* Datenschutzerkl&auml;rung */}
+              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+                <h3 className="text-2xl font-black text-slate-900 mb-6">Datenschutzerkl&auml;rung</h3>
+                <p className="text-sm text-slate-500 mb-6">gem&auml;&szlig; Art. 13 DSGVO</p>
+
+                <div className="space-y-6 text-slate-700 text-sm leading-relaxed">
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">1. Verantwortliche Stelle</h4>
+                    <p>Maria Alejandra Diaz Linde<br />Ob. Bismarckstra&szlig;e 93, 70197 Stuttgart, Germany</p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">2. Art und Zweck der Datenverarbeitung</h4>
+                    <p>
+                      Diese Anwendung ist ein privates, nicht-kommerzielles Hobbyprojekt. Es werden folgende personenbezogene Daten verarbeitet:
+                    </p>
+                    <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600">
+                      <li><strong>E-Mail-Adresse</strong> &ndash; zur Authentifizierung und zum Versand von Job-Digest-E-Mails</li>
+                      <li><strong>Profildaten</strong> (Name, Berufserfahrung, F&auml;higkeiten) &ndash; zur KI-gest&uuml;tzten Jobanalyse und -bewertung</li>
+                      <li><strong>Sucheinstellungen</strong> (Suchbegriffe, Standort, Schwellenwerte) &ndash; zur Personalisierung der Jobsuche</li>
+                      <li><strong>Job-Matches</strong> (Titel, Unternehmen, Bewertungen) &ndash; zur Anzeige und Verwaltung von Suchergebnissen</li>
+                    </ul>
+                    <p className="mt-2">
+                      Rechtsgrundlage: Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch aktive Nutzung) und Art. 6 Abs. 1 lit. b DSGVO (Vertragserf&uuml;llung).
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">3. Drittanbieter und Daten&uuml;bermittlung</h4>
+                    <p>Folgende Drittanbieter werden genutzt:</p>
+                    <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600">
+                      <li><strong>Supabase</strong> (Cloud-Datenbank &amp; Authentifizierung) &ndash; Speicherung der Nutzerdaten</li>
+                      <li><strong>Google Gemini API</strong> &ndash; KI-basierte Profilanalyse und Jobbewertung</li>
+                      <li><strong>Bundesagentur f&uuml;r Arbeit API</strong> &ndash; Abfrage &ouml;ffentlicher Stellenangebote</li>
+                      <li><strong>JSearch / RapidAPI</strong> &ndash; Abfrage internationaler Stellenangebote</li>
+                      <li><strong>Resend</strong> &ndash; Versand von E-Mail-Benachrichtigungen</li>
+                    </ul>
+                    <p className="mt-2">
+                      Eine &Uuml;bermittlung in Drittl&auml;nder (z.B. USA) kann bei Nutzung dieser Dienste erfolgen. Grundlage hierf&uuml;r sind die jeweiligen Standardvertragsklauseln (SCCs) und angemessene Schutzma&szlig;nahmen der Anbieter.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">4. Speicherdauer</h4>
+                    <p>
+                      Ihre Daten werden gespeichert, solange Ihr Nutzerkonto besteht. Bei L&ouml;schung des Kontos werden alle zugeordneten Daten vollst&auml;ndig entfernt.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">5. Ihre Rechte</h4>
+                    <p>Sie haben gem&auml;&szlig; DSGVO folgende Rechte:</p>
+                    <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600">
+                      <li>Auskunftsrecht (Art. 15 DSGVO)</li>
+                      <li>Recht auf Berichtigung (Art. 16 DSGVO)</li>
+                      <li>Recht auf L&ouml;schung (Art. 17 DSGVO)</li>
+                      <li>Recht auf Einschr&auml;nkung der Verarbeitung (Art. 18 DSGVO)</li>
+                      <li>Recht auf Daten&uuml;bertragbarkeit (Art. 20 DSGVO)</li>
+                      <li>Widerspruchsrecht (Art. 21 DSGVO)</li>
+                    </ul>
+                    <p className="mt-2">
+                      Zur Aus&uuml;bung Ihrer Rechte wenden Sie sich bitte an die oben genannte verantwortliche Stelle.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">6. Cookies und Tracking</h4>
+                    <p>
+                      Diese Anwendung verwendet keine Tracking-Cookies, keine Analysetools und kein Werbetracking. Es werden lediglich technisch notwendige Session-Daten f&uuml;r die Authentifizierung gespeichert.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">7. Beschwerderecht</h4>
+                    <p>
+                      Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbeh&ouml;rde zu beschweren. Zust&auml;ndige Beh&ouml;rde ist der Landesbeauftragte f&uuml;r den Datenschutz und die Informationsfreiheit Baden-W&uuml;rttemberg.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="mt-16 mb-8 ml-auto mr-auto max-w-3xl px-8 text-center text-xs text-slate-400 leading-relaxed">
+        <div className="border-t border-slate-100 pt-6 space-y-1">
+          <p>
+            <button onClick={() => setView('legal')} className="text-slate-500 hover:text-indigo-600 font-bold underline underline-offset-2 transition-colors">Impressum &amp; Datenschutz</button>
+          </p>
+          <p>Maria Alejandra Diaz Linde &middot; Stuttgart, Germany</p>
+        </div>
+      </footer>
 
       {/* Loading Overlay */}
       {isLoading && view !== 'scanner' && (
@@ -868,6 +1072,15 @@ function JobCard({
             <div className={`px-4 py-2 rounded-2xl border-2 text-sm font-black shadow-sm ${getScoreColor(match.score)}`}>
               {match.score}% Score
             </div>
+            {match.source && (
+              <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                match.source === 'arbeitsagentur' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                match.source === 'jsearch' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                'bg-violet-50 text-violet-600 border-violet-100'
+              }`}>
+                {match.source === 'arbeitsagentur' ? 'Arbeitsagentur' : match.source === 'jsearch' ? 'JSearch' : 'LinkedIn'}
+              </div>
+            )}
             {isShortlisted && (
               <div className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100">
                 Shortlisted

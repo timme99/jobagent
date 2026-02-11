@@ -32,7 +32,8 @@ export interface JobMatch {
     riskFactors: string[];
   };
   link: string;
+  source?: string;
   status?: 'accepted' | 'dismissed' | 'pending';
 }
 
-export type AppView = 'profile' | 'strategy' | 'scanner' | 'automation' | 'history';
+export type AppView = 'profile' | 'strategy' | 'scanner' | 'automation' | 'history' | 'legal';
