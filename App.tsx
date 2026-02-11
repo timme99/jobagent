@@ -34,6 +34,7 @@ import { fetchArbeitsagenturJobs, fetchJSearchJobs } from './jobSources';
 import { AuthProvider, useAuth } from './AuthProvider';
 import AuthPage from './AuthPage';
 import * as db from './supabaseService';
+import { supabase } from './supabaseClient';
 
 // ── Error Boundary ────────────────────────────────────────────────────
 interface ErrorBoundaryProps { children: ReactNode }
@@ -94,6 +95,10 @@ function AppContent() {
   const [automationEnabled, setAutomationEnabled] = useState(true);
   const [matchThreshold, setMatchThreshold] = useState(80);
   const [digestEmail, setDigestEmail] = useState(userEmail);
+
+  // Digest email state
+  const [digestSending, setDigestSending] = useState(false);
+  const [digestStatus, setDigestStatus] = useState<string | null>(null);
 
   // State for inputs
   const [profileUrl, setProfileUrl] = useState('');
@@ -235,6 +240,44 @@ function AppContent() {
       alert(isRateLimit ? 'Scanner hit API limits. Retrying later is recommended.' : 'Scanning failed. Try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSendDigest = async () => {
+    setDigestSending(true);
+    setDigestStatus(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setDigestStatus('Not authenticated. Please sign in again.');
+        return;
+      }
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-digest`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: digestEmail,
+            threshold: matchThreshold,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setDigestStatus(`Failed: ${data.error || 'Unknown error'}`);
+      } else if (data.success) {
+        setDigestStatus(`Digest sent to ${data.sentTo} (${data.matchCount} matches)`);
+      } else {
+        setDigestStatus(data.message || 'No matches to send.');
+      }
+    } catch (err: any) {
+      setDigestStatus(`Error: ${err.message}`);
+    } finally {
+      setDigestSending(false);
     }
   };
 
@@ -730,19 +773,34 @@ function AppContent() {
                   <div className="p-8 bg-indigo-900 text-white rounded-[2.5rem] shadow-2xl shadow-indigo-200 relative overflow-hidden">
                     <div className="relative z-10">
                       <h4 className="text-xl font-black mb-2 flex items-center gap-2">
-                        <Zap size={20} fill="currentColor" /> Autonomous Cloud Mode
+                        <Mail size={20} /> Send Digest Now
                       </h4>
                       <p className="text-indigo-200 text-sm mb-6 leading-relaxed">
-                        To enable true background automation, connect your Google Sheets via the Apps Script sidebar. This allows Scout to run even while you're offline.
+                        Send a test digest email with your current matches above the threshold. Uses Resend via Supabase Edge Functions.
                       </p>
                       <button
-                        onClick={() => window.open('https://script.google.com/', '_blank', 'noopener,noreferrer')}
-                        className="bg-white text-indigo-900 px-8 py-3 rounded-2xl font-black text-sm hover:bg-indigo-50 transition-colors shadow-lg"
+                        onClick={handleSendDigest}
+                        disabled={digestSending}
+                        className="bg-white text-indigo-900 px-8 py-3 rounded-2xl font-black text-sm hover:bg-indigo-50 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
                       >
-                        Connect Infrastructure
+                        {digestSending ? <><Loader2 size={16} className="animate-spin" /> Sending...</> : 'Send Test Digest'}
                       </button>
+                      {digestStatus && (
+                        <p className={`mt-4 text-sm font-bold ${digestStatus.startsWith('Failed') || digestStatus.startsWith('Error') || digestStatus.startsWith('Not') ? 'text-red-300' : 'text-green-300'}`}>
+                          {digestStatus}
+                        </p>
+                      )}
                     </div>
                     <div className="absolute right-[-10%] top-[-20%] w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl" />
+                  </div>
+
+                  <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
+                    <h4 className="text-lg font-black text-slate-900 mb-2 flex items-center gap-2">
+                      <Zap size={18} /> Autonomous Cloud Mode
+                    </h4>
+                    <p className="text-slate-500 text-sm leading-relaxed">
+                      For fully automated daily digests, deploy the <code className="bg-white px-2 py-0.5 rounded-lg text-xs font-bold border">send-digest</code> Edge Function and set up a cron schedule in your Supabase dashboard.
+                    </p>
                   </div>
                 </div>
               </section>
