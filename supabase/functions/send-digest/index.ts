@@ -14,7 +14,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-admin-key',
 };
 
 serve(async (req: Request) => {
@@ -60,7 +60,12 @@ serve(async (req: Request) => {
     const token = authHeader.replace('Bearer ', '');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    if (token === serviceRoleKey) {
+    // Check for service role key in Authorization header or x-admin-key header
+    // (Dashboard testing may override Authorization, so x-admin-key is a fallback)
+    const adminKey = req.headers.get('x-admin-key');
+    const isServiceRole = token === serviceRoleKey || adminKey === serviceRoleKey;
+
+    if (isServiceRole) {
       // Called with service role key (cron job or Dashboard test)
       if (!body.user_id) {
         return new Response(
@@ -78,7 +83,7 @@ serve(async (req: Request) => {
       const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
       if (userError || !user) {
         return new Response(
-          JSON.stringify({ error: 'Unauthorized' }),
+          JSON.stringify({ error: 'Unauthorized – invalid user JWT', details: userError?.message }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
