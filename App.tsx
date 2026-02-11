@@ -851,6 +851,15 @@ function AppContent() {
         </div>
       </main>
 
+      {/* Impressum Footer */}
+      <footer className="mt-16 mb-8 ml-auto mr-auto max-w-3xl px-8 text-center text-xs text-slate-400 leading-relaxed">
+        <div className="border-t border-slate-100 pt-6">
+          <p className="font-bold text-slate-500 mb-1">Impressum</p>
+          <p>Maria Alejandra Diaz Linde</p>
+          <p>Ob. Bismarckstra&szlig;e 93, 70197 Stuttgart, Germany</p>
+        </div>
+      </footer>
+
       {/* Loading Overlay */}
       {isLoading && view !== 'scanner' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 text-center animate-in fade-in duration-300">
