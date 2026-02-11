@@ -47,30 +47,53 @@ serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Decode the JWT to get user_id
-    const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Parse optional body params
     const body = await req.json().catch(() => ({}));
     const threshold = body.threshold ?? 80;
+
+    // Decode the JWT to get user_id.
+    // If the caller passes a service_role key (e.g. cron or Dashboard test)
+    // and includes a user_id in the body, use that instead.
+    let userId: string;
+    let userEmail: string | undefined;
+
+    const token = authHeader.replace('Bearer ', '');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    if (token === serviceRoleKey) {
+      // Called with service role key (cron job or Dashboard test)
+      if (!body.user_id) {
+        return new Response(
+          JSON.stringify({ error: 'When using service_role key, provide user_id in the request body' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = body.user_id;
+      userEmail = body.email;
+    } else {
+      // Called with a user JWT (frontend)
+      const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = user.id;
+      userEmail = user.email;
+    }
 
     // Load user settings
     const { data: settings } = await supabase
       .from('user_settings')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single();
 
-    const recipientEmail = body.email || settings?.digest_email || user.email;
+    const recipientEmail = body.email || settings?.digest_email || userEmail;
     if (!recipientEmail) {
       return new Response(
         JSON.stringify({ error: 'No digest email configured' }),
@@ -84,7 +107,7 @@ serve(async (req: Request) => {
     const { data: matches, error: matchError } = await supabase
       .from('job_matches')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .gte('score', effectiveThreshold)
       .neq('status', 'dismissed')
       .order('score', { ascending: false })
