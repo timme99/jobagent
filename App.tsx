@@ -248,34 +248,23 @@ function AppContent() {
     setDigestSending(true);
     setDigestStatus(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setDigestStatus('Not authenticated. Please sign in again.');
-        return;
-      }
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-digest`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: digestEmail,
-            threshold: matchThreshold,
-          }),
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setDigestStatus(`Failed: ${data.error || 'Unknown error'}`);
-      } else if (data.success) {
+      const { data, error } = await supabase.functions.invoke('send-digest', {
+        body: { email: digestEmail, threshold: matchThreshold },
+      });
+
+      if (error) {
+        console.error('[send-digest] invoke error:', error);
+        setDigestStatus(`Failed: ${error.message || 'Unknown error'}`);
+      } else if (data?.success) {
         setDigestStatus(`Digest sent to ${data.sentTo} (${data.matchCount} matches)`);
+      } else if (data?.error) {
+        console.error('[send-digest] function returned error:', data);
+        setDigestStatus(`Failed: ${data.error}`);
       } else {
-        setDigestStatus(data.message || 'No matches to send.');
+        setDigestStatus(data?.message || 'No matches to send.');
       }
     } catch (err: any) {
+      console.error('[send-digest] unexpected error:', err);
       setDigestStatus(`Error: ${err.message}`);
     } finally {
       setDigestSending(false);
