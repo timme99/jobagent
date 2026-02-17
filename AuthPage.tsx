@@ -97,7 +97,7 @@ export default function AuthPage() {
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all"
+                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
               />
             </div>
             <div className="relative">
@@ -107,7 +107,7 @@ export default function AuthPage() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all"
+                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
               />
             </div>
 
@@ -133,7 +133,7 @@ export default function AuthPage() {
               <span className="relative z-10">
                 {loading ? <Loader2 size={18} className="animate-spin" /> : (isSignUp ? 'Create Account' : 'Sign In')}
               </span>
-              <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-violet-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute inset-0 bg-gradient-to-r from-[#11ccf5] to-[#0ea5c9] opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           </form>
 
@@ -142,7 +142,7 @@ export default function AuthPage() {
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
               onClick={() => { setIsSignUp(!isSignUp); setError(null); setSuccessMsg(null); }}
-              className="text-indigo-600 font-bold hover:underline"
+              className="text-[#11ccf5] font-bold hover:underline"
             >
               {isSignUp ? 'Sign In' : 'Sign Up'}
             </button>

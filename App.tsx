@@ -313,7 +313,7 @@ function AppContent() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 size={40} className="animate-spin text-indigo-600" />
+          <Loader2 size={40} className="animate-spin text-[#11ccf5]" />
           <p className="text-slate-500 font-medium">Loading your data...</p>
         </div>
       </div>
@@ -321,15 +321,15 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50 overflow-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900">
+    <div className="min-h-screen flex bg-white overflow-hidden font-sans selection:bg-[#11ccf5]/20 selection:text-[#30003b]">
       {/* Sidebar */}
-      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} transition-all duration-500 ease-in-out bg-white border-r border-slate-200 flex flex-col z-20 shadow-xl shadow-slate-200/50`}>
+      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} transition-all duration-500 ease-in-out bg-[#30003b] flex flex-col z-20 shadow-xl`}>
         <div className="p-6 flex items-center gap-3">
           <img src={LOGO_URL} alt="MyCareerBrain" className="w-10 h-10 rounded-xl object-contain" />
           {isSidebarOpen && (
             <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-              <h1 className="font-norwester text-xl tracking-tight leading-none text-[#30003b]">MyCareerBrain</h1>
-              <span className="text-[10px] font-medium text-slate-500">Stop scrolling. Start matching.</span>
+              <h1 className="font-norwester text-xl tracking-tight leading-none text-white">MyCareerBrain</h1>
+              <span className="text-[10px] font-medium text-white/50">Stop scrolling. Start matching.</span>
             </div>
           )}
         </div>
@@ -376,17 +376,17 @@ function AppContent() {
           />
         </nav>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-2">
+        <div className="p-4 border-t border-white/10 space-y-2">
           <button
             onClick={signOut}
-            className="w-full flex items-center justify-center gap-2 p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600 transition-all shadow-sm border border-transparent hover:border-red-200"
+            className="w-full flex items-center justify-center gap-2 p-2 rounded-xl hover:bg-white/10 text-white/50 hover:text-red-400 transition-all"
           >
             <LogOut size={16} />
             {isSidebarOpen && <span className="text-xs font-bold">Sign Out</span>}
           </button>
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="w-full flex items-center justify-center p-2 rounded-xl hover:bg-white text-slate-400 hover:text-indigo-600 transition-all shadow-sm border border-transparent hover:border-slate-200"
+            className="w-full flex items-center justify-center p-2 rounded-xl hover:bg-white/10 text-white/50 hover:text-[#11ccf5] transition-all"
           >
             {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
@@ -416,7 +416,7 @@ function AppContent() {
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
               <section className="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 group">
                 <div className="flex items-center gap-4 mb-8">
-                  <div className="p-4 bg-indigo-50 text-indigo-600 rounded-[1.25rem] transition-transform group-hover:scale-110 group-hover:rotate-3"><Sparkles size={28} fill="currentColor" /></div>
+                  <div className="p-4 bg-[#11ccf5]/10 text-[#11ccf5] rounded-[1.25rem] transition-transform group-hover:scale-110 group-hover:rotate-3"><Sparkles size={28} fill="currentColor" /></div>
                   <div>
                     <h3 className="text-2xl font-black text-slate-900">Synthesize Professional Intelligence</h3>
                     <p className="text-slate-500 font-medium">Combine multiple sources for a high-fidelity career analysis.</p>
@@ -427,12 +427,12 @@ function AppContent() {
                   {/* LinkedIn URL Input */}
                   <div className="space-y-2">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
-                      <Linkedin size={14} className="text-indigo-500" /> LinkedIn Profile (Public Link)
+                      <Linkedin size={14} className="text-[#11ccf5]" /> LinkedIn Profile (Public Link)
                     </label>
                     <div className="relative">
                       <input 
                         type="text"
-                        className="w-full pl-6 pr-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 transition-all outline-none bg-slate-50/50 text-slate-700 font-bold"
+                        className="w-full pl-6 pr-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] transition-all outline-none bg-slate-50/50 text-slate-700 font-bold"
                         placeholder="https://linkedin.com/in/your-profile"
                         value={profileUrl}
                         onChange={(e) => setProfileUrl(e.target.value)}
@@ -443,10 +443,10 @@ function AppContent() {
                   {/* CV / Bio Input */}
                   <div className="space-y-2">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
-                      <FileText size={14} className="text-indigo-500" /> CV or Professional Career Bio
+                      <FileText size={14} className="text-[#11ccf5]" /> CV or Professional Career Bio
                     </label>
                     <textarea 
-                      className="w-full h-48 p-6 rounded-3xl border border-slate-200 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
+                      className="w-full h-48 p-6 rounded-3xl border border-slate-200 focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
                       placeholder="Paste your CV text, or talk about your career journey in your own words..."
                       value={cvText}
                       onChange={(e) => setCvText(e.target.value)}
@@ -456,10 +456,10 @@ function AppContent() {
                   {/* Extra Context Input */}
                   <div className="space-y-2">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
-                      <PlusCircle size={14} className="text-indigo-500" /> Application Extras
+                      <PlusCircle size={14} className="text-[#11ccf5]" /> Application Extras
                     </label>
                     <textarea 
-                      className="w-full h-24 p-6 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
+                      className="w-full h-24 p-6 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
                       placeholder="Specify any extras you want considered (e.g., 'I speak fluent Spanish', 'Looking for roles with a heavy focus on mentorship')..."
                       value={extraContext}
                       onChange={(e) => setExtraContext(e.target.value)}
@@ -480,11 +480,11 @@ function AppContent() {
                   <button 
                     onClick={handleSynthesize}
                     disabled={isLoading || (!profileUrl.trim() && !cvText.trim())}
-                    className="group relative overflow-hidden bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold transition-all hover:bg-slate-800 disabled:opacity-40 shadow-xl shadow-slate-200 hover:shadow-indigo-100 hover:-translate-y-1 flex items-center gap-3"
+                    className="group relative overflow-hidden bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold transition-all hover:bg-slate-800 disabled:opacity-40 shadow-xl shadow-slate-200 hover:shadow-[#11ccf5]/10 hover:-translate-y-1 flex items-center gap-3"
                   >
                     <span className="relative z-10">{isLoading ? 'Synthesizing Intelligence...' : 'Build Unified Profile'}</span>
                     <ChevronRight size={18} className="relative z-10 transition-transform group-hover:translate-x-1" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-violet-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-[#11ccf5] to-[#0ea5c9] opacity-0 group-hover:opacity-100 transition-opacity" />
                   </button>
                 </div>
               </section>
@@ -494,10 +494,10 @@ function AppContent() {
                   <div className="lg:col-span-2 bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                     <div className="flex items-center justify-between mb-8">
                        <h4 className="font-black text-2xl text-slate-900 flex items-center gap-3">
-                        <div className="w-1.5 h-8 bg-indigo-600 rounded-full" />
+                        <div className="w-1.5 h-8 bg-[#11ccf5] rounded-full" />
                         {profile.name}
                       </h4>
-                      <button className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><Settings size={18}/></button>
+                      <button className="p-2 text-slate-400 hover:text-[#11ccf5] transition-colors"><Settings size={18}/></button>
                     </div>
                     <p className="text-lg text-slate-600 mb-10 leading-relaxed font-medium bg-slate-50 p-6 rounded-3xl border border-slate-100 italic">
                       "{profile.summary}"
@@ -506,11 +506,11 @@ function AppContent() {
                       <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-slate-100" />
                       {profile.experience.map((exp, i) => (
                         <div key={i} className="relative pl-12 group/item">
-                          <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-white border-4 border-indigo-600 group-hover/item:scale-125 transition-transform z-10" />
+                          <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-white border-4 border-[#11ccf5] group-hover/item:scale-125 transition-transform z-10" />
                           <div className="flex justify-between items-start mb-1">
                             <h5 className="font-black text-slate-900 text-lg">{exp.role}</h5>
                           </div>
-                          <p className="text-indigo-600 font-bold text-sm mb-3 tracking-wide">{exp.company}</p>
+                          <p className="text-[#11ccf5] font-bold text-sm mb-3 tracking-wide">{exp.company}</p>
                           <ul className="space-y-2">
                             {exp.highlights.map((h, j) => (
                               <li key={j} className="text-sm text-slate-500 font-medium flex gap-2">
@@ -524,9 +524,9 @@ function AppContent() {
                     </div>
                   </div>
                   <div className="space-y-8">
-                    <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-2xl shadow-indigo-200 relative overflow-hidden group">
-                      <div className="absolute -right-8 -top-8 w-32 h-32 bg-indigo-500/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000" />
-                      <h4 className="font-black text-lg mb-6 flex items-center gap-2 relative z-10 uppercase tracking-widest text-indigo-400">
+                    <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-2xl shadow-[#11ccf5]/10 relative overflow-hidden group">
+                      <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#11ccf5]/100/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000" />
+                      <h4 className="font-black text-lg mb-6 flex items-center gap-2 relative z-10 uppercase tracking-widest text-[#11ccf5]/80">
                         <Sparkles size={20} fill="currentColor"/> Hidden Strengths
                       </h4>
                       <div className="flex flex-wrap gap-2 relative z-10">
@@ -537,11 +537,11 @@ function AppContent() {
                     </div>
                     <div className="bg-white p-8 rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                       <h4 className="font-black text-slate-900 mb-6 uppercase tracking-widest text-xs flex items-center gap-2">
-                        <Zap size={16} className="text-indigo-600" /> Core Competencies
+                        <Zap size={16} className="text-[#11ccf5]" /> Core Competencies
                       </h4>
                       <div className="flex flex-wrap gap-2">
                         {profile.skills.map((s, i) => (
-                          <span key={i} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-100 hover:shadow-md transition-all cursor-default">{s}</span>
+                          <span key={i} className="px-3 py-1.5 bg-[#11ccf5]/10 text-[#0ea5c9] rounded-lg text-xs font-bold border border-[#11ccf5]/20 hover:shadow-md transition-all cursor-default">{s}</span>
                         ))}
                       </div>
                     </div>
@@ -551,7 +551,7 @@ function AppContent() {
                         <ul className="space-y-2">
                           {profileSources.map((source, i) => (source.web?.uri || source.maps?.uri) && (
                             <li key={i}>
-                              <a href={source.web?.uri || source.maps?.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-indigo-500 hover:underline flex items-center gap-1">
+                              <a href={source.web?.uri || source.maps?.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-[#11ccf5] hover:underline flex items-center gap-1">
                                 <ExternalLink size={10} /> {source.web?.title || 'LinkedIn Profile'}
                               </a>
                             </li>
@@ -605,7 +605,7 @@ function AppContent() {
                     <ul className="space-y-4">
                       {strategy.priorities.map((p, i) => (
                         <li key={i} className="flex gap-4 items-start p-4 bg-slate-50 rounded-2xl border border-slate-100 group/p">
-                          <span className="w-6 h-6 bg-white text-slate-400 flex-shrink-0 flex items-center justify-center rounded-lg text-[10px] font-black border border-slate-200 group-hover/p:border-indigo-400 group-hover/p:text-indigo-600 transition-colors shadow-sm">{i+1}</span>
+                          <span className="w-6 h-6 bg-white text-slate-400 flex-shrink-0 flex items-center justify-center rounded-lg text-[10px] font-black border border-slate-200 group-hover/p:border-[#11ccf5] group-hover/p:text-[#11ccf5] transition-colors shadow-sm">{i+1}</span>
                           <span className="text-sm font-semibold text-slate-700 leading-tight">{p}</span>
                         </li>
                       ))}
@@ -637,21 +637,21 @@ function AppContent() {
                   <h3 className="text-2xl font-black text-slate-900">Opportunity Scanner</h3>
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="relative group">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#11ccf5] transition-colors" size={18} />
                       <input 
                         type="text" 
                         placeholder="Keywords (SaaS, Customer Success...)" 
-                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-indigo-100 outline-none transition-all"
+                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 outline-none transition-all"
                         value={scanKeywords}
                         onChange={(e) => setScanKeywords(e.target.value)}
                       />
                     </div>
                     <div className="relative group">
-                      <Target className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                      <Target className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#11ccf5] transition-colors" size={18} />
                       <input 
                         type="text" 
                         placeholder="Location (Remote, Berlin...)" 
-                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-indigo-100 outline-none transition-all"
+                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 outline-none transition-all"
                         value={scanLocation}
                         onChange={(e) => setScanLocation(e.target.value)}
                       />
@@ -661,7 +661,7 @@ function AppContent() {
                 <button 
                   onClick={handleScan}
                   disabled={isLoading}
-                  className="w-full md:w-auto flex items-center justify-center gap-3 bg-indigo-600 text-white px-10 py-8 rounded-[2rem] font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 disabled:opacity-50 active:scale-95"
+                  className="w-full md:w-auto flex items-center justify-center gap-3 bg-[#11ccf5] text-white px-10 py-8 rounded-[2rem] font-black hover:bg-[#0ea5c9] transition-all shadow-xl shadow-[#11ccf5]/10 disabled:opacity-50 active:scale-95"
                 >
                   {isLoading ? <Loader2 className="animate-spin" size={28} /> : <Zap size={28} fill="currentColor" />}
                   <div className="text-left">
@@ -713,7 +713,7 @@ function AppContent() {
             <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
                <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <div className="flex items-center gap-4 mb-10">
-                  <div className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl"><Mail size={28} /></div>
+                  <div className="p-4 bg-[#11ccf5]/10 text-[#11ccf5] rounded-2xl"><Mail size={28} /></div>
                   <div>
                     <h3 className="text-2xl font-black text-slate-900">Morning Digest Subscription</h3>
                     <p className="text-slate-500 font-medium text-sm">Automated background scanning & email notifications.</p>
@@ -733,7 +733,7 @@ function AppContent() {
                         checked={automationEnabled}
                         onChange={(e) => { setAutomationEnabled(e.target.checked); db.saveSettings(userId, { automationEnabled: e.target.checked }); }}
                       />
-                      <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
+                      <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#11ccf5]/40 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#11ccf5]"></div>
                     </label>
                   </div>
 
@@ -744,7 +744,7 @@ function AppContent() {
                     </div>
                     <input
                       type="range"
-                      className="w-32 accent-indigo-600"
+                      className="w-32 accent-[#11ccf5]"
                       min={0}
                       max={100}
                       step={5}
@@ -760,7 +760,7 @@ function AppContent() {
                     </div>
                     <input
                       type="email"
-                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all"
+                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
                       placeholder="your@email.com"
                       value={digestEmail}
                       onChange={(e) => setDigestEmail(e.target.value)}
@@ -775,18 +775,18 @@ function AppContent() {
                     </div>
                   )}
 
-                  <div className="p-8 bg-indigo-900 text-white rounded-[2.5rem] shadow-2xl shadow-indigo-200 relative overflow-hidden">
+                  <div className="p-8 bg-[#30003b] text-white rounded-[2.5rem] shadow-2xl shadow-[#11ccf5]/10 relative overflow-hidden">
                     <div className="relative z-10">
                       <h4 className="text-xl font-black mb-2 flex items-center gap-2">
                         <Mail size={20} /> Send Digest Now
                       </h4>
-                      <p className="text-indigo-200 text-sm mb-6 leading-relaxed">
+                      <p className="text-[#11ccf5]/60 text-sm mb-6 leading-relaxed">
                         Send a test digest email with your current matches above the threshold. Uses Resend via Supabase Edge Functions.
                       </p>
                       <button
                         onClick={handleSendDigest}
                         disabled={digestSending}
-                        className="bg-white text-indigo-900 px-8 py-3 rounded-2xl font-black text-sm hover:bg-indigo-50 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                        className="bg-white text-[#30003b] px-8 py-3 rounded-2xl font-black text-sm hover:bg-[#11ccf5]/10 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
                       >
                         {digestSending ? <><Loader2 size={16} className="animate-spin" /> Sending...</> : 'Send Test Digest'}
                       </button>
@@ -796,17 +796,9 @@ function AppContent() {
                         </p>
                       )}
                     </div>
-                    <div className="absolute right-[-10%] top-[-20%] w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl" />
+                    <div className="absolute right-[-10%] top-[-20%] w-64 h-64 bg-[#11ccf5]/100/20 rounded-full blur-3xl" />
                   </div>
 
-                  <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
-                    <h4 className="text-lg font-black text-slate-900 mb-2 flex items-center gap-2">
-                      <Zap size={18} /> Autonomous Cloud Mode
-                    </h4>
-                    <p className="text-slate-500 text-sm leading-relaxed">
-                      For fully automated daily digests, deploy the <code className="bg-white px-2 py-0.5 rounded-lg text-xs font-bold border">send-digest</code> Edge Function and set up a cron schedule in your Supabase dashboard.
-                    </p>
-                  </div>
                 </div>
               </section>
             </div>
@@ -820,7 +812,7 @@ function AppContent() {
                   <p className="text-slate-500 font-medium">Your curated high-probability opportunities.</p>
                 </div>
                 {shortlistedJobs.length > 0 && (
-                  <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-black uppercase tracking-widest border border-indigo-100">
+                  <div className="px-4 py-2 bg-[#11ccf5]/10 text-[#0ea5c9] rounded-xl text-xs font-black uppercase tracking-widest border border-[#11ccf5]/20">
                     {shortlistedJobs.length} Saved Matches
                   </div>
                 )}
@@ -828,14 +820,14 @@ function AppContent() {
 
               {shortlistedJobs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-40">
-                  <div className="p-8 bg-indigo-50 text-indigo-200 rounded-full mb-8">
+                  <div className="p-8 bg-[#11ccf5]/10 text-[#11ccf5]/60 rounded-full mb-8">
                     <BookmarkCheck size={64} strokeWidth={1} />
                   </div>
                   <h3 className="text-2xl font-black text-slate-900 mb-2">Shortlist is Empty</h3>
                   <p className="text-slate-500 text-center max-w-sm font-medium">
                     Start scanning and "Accept" jobs to save them here for active applications.
                   </p>
-                  <button className="mt-8 text-indigo-600 font-bold text-sm hover:underline" onClick={() => setView('scanner')}>
+                  <button className="mt-8 text-[#11ccf5] font-bold text-sm hover:underline" onClick={() => setView('scanner')}>
                     Go to live scanner
                   </button>
                 </div>
@@ -975,11 +967,11 @@ function AppContent() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 text-center animate-in fade-in duration-300">
           <div className="bg-white p-12 rounded-[3.5rem] shadow-[0_0_100px_rgba(79,70,229,0.3)] flex flex-col items-center max-w-md relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-1 bg-slate-100 overflow-hidden">
-              <div className="h-full bg-indigo-600 animate-progress w-full" />
+              <div className="h-full bg-[#11ccf5] animate-progress w-full" />
             </div>
-            <div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mb-8 relative">
-              <Loader2 size={40} className="animate-spin text-indigo-600" />
-              <div className="absolute inset-0 border-4 border-indigo-100 rounded-[2rem]" />
+            <div className="w-20 h-20 bg-[#11ccf5]/10 rounded-[2rem] flex items-center justify-center mb-8 relative">
+              <Loader2 size={40} className="animate-spin text-[#11ccf5]" />
+              <div className="absolute inset-0 border-4 border-[#11ccf5]/20 rounded-[2rem]" />
             </div>
             <h3 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">{loadingText}</h3>
             <p className="text-slate-500 font-medium leading-relaxed">
@@ -999,7 +991,7 @@ function AuthenticatedApp() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 size={40} className="animate-spin text-indigo-600" />
+          <Loader2 size={40} className="animate-spin text-[#11ccf5]" />
           <p className="text-slate-500 font-medium">Loading your dashboard...</p>
         </div>
       </div>
@@ -1051,18 +1043,18 @@ function NavItem({ icon, label, active, onClick, expanded, disabled, badge }: { 
       disabled={disabled}
       className={`
         w-full flex items-center gap-3 p-4 rounded-2xl transition-all duration-300 relative group
-        ${active ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}
+        ${active ? 'bg-[#11ccf5] text-[#30003b] shadow-lg shadow-[#11ccf5]/20' : 'text-white/60 hover:bg-white/10 hover:text-white'}
         ${disabled ? 'opacity-20 cursor-not-allowed filter grayscale' : 'cursor-pointer'}
       `}
     >
       <div className={`transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110 group-hover:rotate-6'}`}>{icon}</div>
       {expanded && <span className="font-bold text-sm whitespace-nowrap tracking-tight">{label}</span>}
       {badge !== undefined && expanded && (
-        <span className={`ml-auto px-2 py-0.5 rounded-lg text-[10px] font-black ${active ? 'bg-white text-indigo-600' : 'bg-indigo-100 text-indigo-700'}`}>
+        <span className={`ml-auto px-2 py-0.5 rounded-lg text-[10px] font-black ${active ? 'bg-[#30003b] text-[#11ccf5]' : 'bg-white/10 text-[#11ccf5]'}`}>
           {badge}
         </span>
       )}
-      {active && <div className="absolute left-[-1rem] top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+      {active && <div className="absolute left-[-1rem] top-1/2 -translate-y-1/2 w-1 h-6 bg-[#11ccf5] rounded-r-full" />}
     </button>
   );
 }
@@ -1089,7 +1081,7 @@ function JobCard({
   };
 
   return (
-    <div className={`bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40 transition-all duration-500 overflow-hidden hover:shadow-2xl hover:shadow-indigo-100/30 ${expanded ? 'scale-[1.02] border-indigo-200' : ''}`}>
+    <div className={`bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40 transition-all duration-500 overflow-hidden hover:shadow-2xl hover:shadow-[#11ccf5]/10/30 ${expanded ? 'scale-[1.02] border-[#11ccf5]/30' : ''}`}>
       <div className="p-8 flex items-start justify-between">
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-4 mb-4">
@@ -1101,19 +1093,19 @@ function JobCard({
               <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
                 match.source === 'arbeitsagentur' ? 'bg-blue-50 text-blue-600 border-blue-100' :
                 match.source === 'jsearch' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                'bg-violet-50 text-violet-600 border-violet-100'
+                'bg-[#11ccf5]/10 text-[#11ccf5] border-[#11ccf5]/20'
               }`}>
                 {match.source === 'arbeitsagentur' ? 'Arbeitsagentur' : match.source === 'jsearch' ? 'JSearch' : 'LinkedIn'}
               </div>
             )}
             {isShortlisted && (
-              <div className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100">
+              <div className="px-3 py-1 bg-[#11ccf5]/10 text-[#11ccf5] rounded-full text-[10px] font-black uppercase tracking-widest border border-[#11ccf5]/20">
                 Shortlisted
               </div>
             )}
           </div>
           <div className="flex items-center gap-4 text-sm font-bold">
-            <p className="text-indigo-600 uppercase tracking-widest">{match.company}</p>
+            <p className="text-[#11ccf5] uppercase tracking-widest">{match.company}</p>
             <div className="w-1 h-1 bg-slate-200 rounded-full" />
             <p className="text-slate-400">{match.location}</p>
           </div>
@@ -1145,7 +1137,7 @@ function JobCard({
             {onAccept && (
               <button 
                 onClick={(e) => { e.stopPropagation(); onAccept(); }}
-                className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2"
+                className="px-6 py-2.5 bg-[#11ccf5] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#0ea5c9] transition-all shadow-lg shadow-[#11ccf5]/10 flex items-center gap-2"
               >
                 <BookmarkCheck size={14} />
                 Save Match
@@ -1173,7 +1165,7 @@ function JobCard({
         
         <button 
           onClick={() => setExpanded(!expanded)}
-          className={`p-4 rounded-2xl transition-all duration-300 ${expanded ? 'bg-indigo-600 text-white rotate-180' : 'bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-indigo-600'}`}
+          className={`p-4 rounded-2xl transition-all duration-300 ${expanded ? 'bg-[#11ccf5] text-white rotate-180' : 'bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-[#11ccf5]'}`}
         >
           <ChevronDown size={24} />
         </button>
