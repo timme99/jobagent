@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 
-const LOGO_URL = 'https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/logo.png';
+const LOGO_URL = 'https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/W&Blogo.png';
 
 export default function AuthPage() {
   const { signIn, signUp, signInWithGoogle } = useAuth();

@@ -34,10 +34,11 @@ import { synthesizeProfile, refineStrategy, scoreJobMatch, fetchLiveJobs } from 
 import { fetchArbeitsagenturJobs, fetchJSearchJobs } from './jobSources';
 import { AuthProvider, useAuth } from './AuthProvider';
 import AuthPage from './AuthPage';
+import LandingPage from './LandingPage';
 import * as db from './supabaseService';
 import { supabase, supabaseConfigMissing } from './supabaseClient';
 
-const LOGO_URL = 'https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/logo.png';
+const LOGO_URL = 'https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/W&Blogo.png';
 
 // ── Error Boundary ────────────────────────────────────────────────────
 interface ErrorBoundaryProps { children: ReactNode }
@@ -986,6 +987,7 @@ function AppContent() {
 
 function AuthenticatedApp() {
   const { user, loading } = useAuth();
+  const [showAuth, setShowAuth] = React.useState(false);
 
   if (loading) {
     return (
@@ -998,7 +1000,10 @@ function AuthenticatedApp() {
     );
   }
 
-  if (!user) return <AuthPage />;
+  if (!user) {
+    if (showAuth) return <AuthPage />;
+    return <LandingPage onGetStarted={() => setShowAuth(true)} />;
+  }
   return <AppContent />;
 }
 
