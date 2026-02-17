@@ -248,7 +248,12 @@ function AppContent() {
     setDigestSending(true);
     setDigestStatus(null);
     try {
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      console.log('[send-digest] VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL ? 'set' : 'MISSING');
+      console.log('[send-digest] VITE_SUPABASE_ANON_KEY:', anonKey ? `set (${anonKey.slice(0, 10)}…)` : 'MISSING');
+
       const { data, error } = await supabase.functions.invoke('send-digest', {
+        headers: { apikey: anonKey },
         body: { email: digestEmail, threshold: matchThreshold },
       });
 
