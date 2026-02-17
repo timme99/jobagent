@@ -35,7 +35,7 @@ import { fetchArbeitsagenturJobs, fetchJSearchJobs } from './jobSources';
 import { AuthProvider, useAuth } from './AuthProvider';
 import AuthPage from './AuthPage';
 import * as db from './supabaseService';
-import { supabase } from './supabaseClient';
+import { supabase, supabaseConfigMissing } from './supabaseClient';
 
 // ── Error Boundary ────────────────────────────────────────────────────
 interface ErrorBoundaryProps { children: ReactNode }
@@ -1010,6 +1010,30 @@ function AuthenticatedApp() {
 }
 
 export default function App() {
+  if (supabaseConfigMissing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-8">
+        <div className="bg-white p-12 rounded-[2.5rem] shadow-xl max-w-lg text-center border border-slate-100">
+          <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <AlertCircle size={32} />
+          </div>
+          <h2 className="text-2xl font-black text-slate-900 mb-3">Configuration Required</h2>
+          <p className="text-slate-500 font-medium mb-4">
+            Supabase environment variables are missing. The app cannot connect to the database.
+          </p>
+          <div className="text-left bg-slate-50 rounded-xl p-4 mb-6">
+            <p className="text-xs font-bold text-slate-700 mb-2">Required variables:</p>
+            <code className="text-xs text-slate-600 block">VITE_SUPABASE_URL</code>
+            <code className="text-xs text-slate-600 block">VITE_SUPABASE_ANON_KEY</code>
+          </div>
+          <p className="text-xs text-slate-400">
+            Add these in your Vercel project settings under Environment Variables for all environments (Production, Preview, Development).
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <AuthProvider>
