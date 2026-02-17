@@ -257,6 +257,8 @@ function AppContent() {
         body: { email: digestEmail, threshold: matchThreshold },
       });
 
+      console.log('[send-digest] raw response:', { data, error });
+
       if (error) {
         console.error('[send-digest] invoke error:', error);
         setDigestStatus(`Failed: ${error.message || 'Unknown error'}`);

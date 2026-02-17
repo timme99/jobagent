@@ -38,6 +38,13 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // ── DIAGNOSTIC: bypass all logic to test gateway connectivity ──
+  return new Response(
+    JSON.stringify({ message: 'Success: Reached the Function' }),
+    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+  // ── END DIAGNOSTIC (remove this block after testing) ──
+
   try {
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
     const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'JobScout AI <onboarding@resend.dev>';
