@@ -1,5 +1,5 @@
 // supabase/functions/send-digest/index.ts
-// Supabase Edge Function: sends a job digest email via Resend.
+// Supabase Edge Function: sends a branded job digest email via Resend.
 //
 // Can be invoked:
 //   1. From the frontend ("Send Test Digest" button)
@@ -7,14 +7,23 @@
 //
 // Required Supabase secrets (set via `supabase secrets set`):
 //   RESEND_API_KEY   – your Resend API key
-//   RESEND_FROM      – verified sender address (e.g. "JobScout <digest@yourdomain.com>")
+//   RESEND_FROM      – verified sender address
 //   GOT_JWT_SECRET   – the JWT secret from Supabase (Settings > API > JWT Secret)
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
-// ── Safety: max job matches per digest run (protects downstream API quotas) ──
+// ── Safety: max job matches per digest run (protects Gemini API quota) ──
 const MAX_MATCHES_PER_RUN = 50;
+
+// ── Brand ────────────────────────────────────────────────────────────
+const BRAND = {
+  bg: '#30003b',
+  accent: '#11ccf5',
+  logo: 'https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/logo.png',
+  name: 'MyCareerBrain',
+  url: 'https://mycareerbrain.de',
+};
 
 // ── CORS ─────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
@@ -61,7 +70,6 @@ async function verifyJwt(
       ['verify'],
     );
 
-    // Base64url decode helper
     const b64url = (s: string) =>
       Uint8Array.from(
         atob(s.replace(/-/g, '+').replace(/_/g, '/')),
@@ -78,7 +86,6 @@ async function verifyJwt(
 
     const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
 
-    // Check expiry
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
       console.log('JWT expired at', new Date(payload.exp * 1000).toISOString());
       return null;
@@ -102,18 +109,18 @@ serve(async (req: Request) => {
   try {
     // ── Secrets ──────────────────────────────────────────────────────
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'JobScout AI <onboarding@resend.dev>';
+    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'MyCareerBrain <onboarding@resend.dev>';
     const JWT_SECRET = Deno.env.get('GOT_JWT_SECRET');
 
     if (!RESEND_API_KEY) {
       return jsonResponse(
-        { success: false, error: 'RESEND_API_KEY not configured. Set it via: supabase secrets set RESEND_API_KEY=re_...' },
+        { success: false, error: 'RESEND_API_KEY not configured.' },
         corsHeaders,
       );
     }
     if (!JWT_SECRET) {
       return jsonResponse(
-        { success: false, error: 'GOT_JWT_SECRET not configured. Set it via: supabase secrets set GOT_JWT_SECRET=<your-jwt-secret>' },
+        { success: false, error: 'GOT_JWT_SECRET not configured.' },
         corsHeaders,
       );
     }
@@ -134,7 +141,6 @@ serve(async (req: Request) => {
     let userEmail: string | undefined;
 
     if (token === supabaseServiceKey) {
-      // Service-role caller (cron / Dashboard test)
       if (!body.user_id) {
         return jsonResponse(
           { success: false, error: 'When using service_role key, provide user_id in the request body' },
@@ -144,7 +150,6 @@ serve(async (req: Request) => {
       userId = body.user_id;
       userEmail = body.email;
     } else {
-      // Frontend caller – verify JWT signature with GOT_JWT_SECRET
       const claims = await verifyJwt(token, JWT_SECRET);
       if (!claims || !claims.sub) {
         console.log('JWT verification failed for token (first 20 chars):', token.slice(0, 20));
@@ -158,10 +163,10 @@ serve(async (req: Request) => {
       console.log('User ID from token:', userId);
     }
 
-    // ── User settings (may not exist for new users) ──────────────────
+    // ── User settings ────────────────────────────────────────────────
     const { data: settings, error: settingsError } = await supabase
       .from('user_settings')
-      .select('digest_email, match_threshold')
+      .select('digest_email, match_threshold, last_digest_sent_at')
       .eq('user_id', userId)
       .single();
 
@@ -179,12 +184,20 @@ serve(async (req: Request) => {
 
     const effectiveThreshold = body.threshold ?? settings?.match_threshold ?? 80;
 
-    // ── Fetch matches (capped at MAX_MATCHES_PER_RUN for API safety) ─
+    // ── Determine time window for deduplication ──────────────────────
+    // Use last_digest_sent_at if available, otherwise default to 24h ago.
+    const lastSent = settings?.last_digest_sent_at;
+    const since = lastSent
+      ? lastSent
+      : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    // ── Fetch matches (24h window + dedup + capped at 50) ────────────
     const { data: matches, error: matchError } = await supabase
       .from('job_matches')
       .select('*')
       .eq('user_id', userId)
       .gte('score', effectiveThreshold)
+      .gte('created_at', since)
       .neq('status', 'dismissed')
       .order('score', { ascending: false })
       .limit(MAX_MATCHES_PER_RUN);
@@ -208,12 +221,10 @@ serve(async (req: Request) => {
     let emailHtml: string;
 
     if (!matches || matches.length === 0) {
-      // ── Friendly "no matches" email ────────────────────────────────
-      subject = `JobScout Daily Update: No new matches (${dateStr})`;
+      subject = `${BRAND.name}: No new matches today (${dateStr})`;
       emailHtml = buildNoMatchesEmail(effectiveThreshold, dateStr);
     } else {
-      // ── Matches digest email ───────────────────────────────────────
-      subject = `JobScout Digest: ${matches.length} new match${matches.length > 1 ? 'es' : ''} (${dateStr})`;
+      subject = `${BRAND.name}: ${matches.length} new match${matches.length > 1 ? 'es' : ''} (${dateStr})`;
       emailHtml = buildMatchesEmail(matches, effectiveThreshold, dateStr);
     }
 
@@ -251,6 +262,16 @@ serve(async (req: Request) => {
       );
     }
 
+    // ── Success: update last_digest_sent_at for deduplication ────────
+    const { error: updateError } = await supabase
+      .from('user_settings')
+      .update({ last_digest_sent_at: new Date().toISOString() })
+      .eq('user_id', userId);
+
+    if (updateError) {
+      console.log(`Failed to update last_digest_sent_at: ${updateError.message}`);
+    }
+
     return jsonResponse(
       {
         success: true,
@@ -270,18 +291,19 @@ serve(async (req: Request) => {
   }
 });
 
-// ── Email builders ───────────────────────────────────────────────────
+// ── Branded email builders ───────────────────────────────────────────
 
 function buildNoMatchesEmail(threshold: number, dateStr: string): string {
   return `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f8fafc; margin:0; padding:32px 16px;">
-  <div style="max-width:600px; margin:0 auto; background:white; border-radius:24px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.06);">
-    <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed); padding:32px 28px; text-align:center;">
-      <h1 style="color:white; margin:0; font-size:22px; font-weight:800;">Daily Update</h1>
-      <p style="color:rgba(255,255,255,0.8); margin:8px 0 0; font-size:14px;">${escapeHtml(dateStr)}</p>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#1a0020; margin:0; padding:32px 16px;">
+  <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:24px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+    <div style="background:${BRAND.bg}; padding:32px 28px; text-align:center;">
+      <img src="${BRAND.logo}" alt="${BRAND.name}" style="width:48px; height:48px; border-radius:12px; margin-bottom:12px;" />
+      <h1 style="color:${BRAND.accent}; margin:0; font-size:22px; font-weight:800;">${BRAND.name}</h1>
+      <p style="color:rgba(255,255,255,0.7); margin:6px 0 0; font-size:13px;">Daily Update &middot; ${esc(dateStr)}</p>
     </div>
     <div style="padding:32px 28px; text-align:center;">
       <div style="width:64px; height:64px; background:#f0fdf4; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin-bottom:16px;">
@@ -289,12 +311,12 @@ function buildNoMatchesEmail(threshold: number, dateStr: string): string {
       </div>
       <h2 style="color:#0f172a; font-size:18px; font-weight:700; margin:0 0 8px;">No New Matches Today</h2>
       <p style="color:#64748b; font-size:14px; line-height:1.6; margin:0;">
-        No jobs scored above your <strong>${threshold}%</strong> match threshold today.
-        Your JobScout agent is still running &mdash; we&rsquo;ll email you as soon as new matches appear.
+        No jobs scored above your <strong>${threshold}%</strong> threshold today.
+        Your agent is still running &mdash; we&rsquo;ll email you as soon as new matches appear.
       </p>
     </div>
     <div style="padding:20px 28px; text-align:center; border-top:1px solid #f1f5f9;">
-      <p style="color:#94a3b8; font-size:12px; margin:0;">Sent by JobScout AI &middot; <a href="https://mycareerbrain.de" style="color:#4f46e5; text-decoration:none;">Open Dashboard</a></p>
+      <p style="color:#94a3b8; font-size:12px; margin:0;">Sent by ${BRAND.name} &middot; <a href="${BRAND.url}" style="color:${BRAND.accent}; text-decoration:none;">Open Dashboard</a></p>
     </div>
   </div>
 </body>
@@ -311,15 +333,15 @@ function buildMatchesEmail(
       (m: any) => `
       <tr>
         <td style="padding:14px 20px; border-bottom:1px solid #f1f5f9;">
-          <div style="font-weight:700; color:#0f172a; font-size:15px;">${escapeHtml(m.title)}</div>
-          <div style="color:#64748b; font-size:13px; margin-top:3px;">${escapeHtml(m.company)} &middot; ${escapeHtml(m.location || 'Remote / N/A')}</div>
+          <div style="font-weight:700; color:#0f172a; font-size:15px;">${esc(m.title)}</div>
+          <div style="color:#64748b; font-size:13px; margin-top:3px;">${esc(m.company)} &middot; ${esc(m.location || 'Remote / N/A')}</div>
           <div style="margin-top:6px;">
-            <span style="display:inline-block; background:#eef2ff; color:#4f46e5; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:700;">${m.score}% match</span>
-            ${m.source ? `<span style="display:inline-block; background:#f0fdf4; color:#16a34a; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; margin-left:4px;">${escapeHtml(m.source)}</span>` : ''}
+            <span style="display:inline-block; background:#e0f7fa; color:#0097a7; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:700;">${m.score}% match</span>
+            ${m.source ? `<span style="display:inline-block; background:#f3e5f5; color:#7b1fa2; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; margin-left:4px;">${esc(m.source)}</span>` : ''}
           </div>
         </td>
         <td style="padding:14px 20px; border-bottom:1px solid #f1f5f9; text-align:right; vertical-align:middle;">
-          <a href="${escapeHtml(m.link || '#')}" style="display:inline-block; background:#4f46e5; color:white; padding:9px 18px; border-radius:12px; font-size:13px; font-weight:700; text-decoration:none;">View&nbsp;&rarr;</a>
+          <a href="${esc(m.link || '#')}" style="display:inline-block; background:${BRAND.accent}; color:${BRAND.bg}; padding:9px 18px; border-radius:12px; font-size:13px; font-weight:700; text-decoration:none;">View&nbsp;&rarr;</a>
         </td>
       </tr>`,
     )
@@ -329,27 +351,28 @@ function buildMatchesEmail(
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f8fafc; margin:0; padding:32px 16px;">
-  <div style="max-width:600px; margin:0 auto; background:white; border-radius:24px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.06);">
-    <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed); padding:32px 28px; text-align:center;">
-      <h1 style="color:white; margin:0; font-size:22px; font-weight:800;">Your Daily Job Digest</h1>
-      <p style="color:rgba(255,255,255,0.8); margin:8px 0 0; font-size:14px;">${matches.length} match${matches.length > 1 ? 'es' : ''} scoring ${threshold}%+ &middot; ${escapeHtml(dateStr)}</p>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#1a0020; margin:0; padding:32px 16px;">
+  <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:24px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+    <div style="background:${BRAND.bg}; padding:32px 28px; text-align:center;">
+      <img src="${BRAND.logo}" alt="${BRAND.name}" style="width:48px; height:48px; border-radius:12px; margin-bottom:12px;" />
+      <h1 style="color:${BRAND.accent}; margin:0; font-size:22px; font-weight:800;">Your Daily Job Digest</h1>
+      <p style="color:rgba(255,255,255,0.7); margin:6px 0 0; font-size:13px;">${matches.length} match${matches.length > 1 ? 'es' : ''} scoring ${threshold}%+ &middot; ${esc(dateStr)}</p>
     </div>
     <div style="padding:4px 0;">
       <table style="width:100%; border-collapse:collapse;">
         ${jobRows}
       </table>
     </div>
-    ${matches.length >= MAX_MATCHES_PER_RUN ? `<div style="padding:12px 28px; text-align:center; background:#fffbeb;"><p style="color:#92400e; font-size:12px; margin:0; font-weight:600;">Showing top ${MAX_MATCHES_PER_RUN} matches. Open your dashboard to see the rest.</p></div>` : ''}
+    ${matches.length >= MAX_MATCHES_PER_RUN ? `<div style="padding:12px 28px; text-align:center; background:#fff3e0;"><p style="color:#e65100; font-size:12px; margin:0; font-weight:600;">Showing top ${MAX_MATCHES_PER_RUN} matches. Open your dashboard to see the rest.</p></div>` : ''}
     <div style="padding:20px 28px; text-align:center; border-top:1px solid #f1f5f9;">
-      <p style="color:#94a3b8; font-size:12px; margin:0;">Sent by JobScout AI &middot; <a href="https://mycareerbrain.de" style="color:#4f46e5; text-decoration:none;">Open Dashboard</a></p>
+      <p style="color:#94a3b8; font-size:12px; margin:0;">Sent by ${BRAND.name} &middot; <a href="${BRAND.url}" style="color:${BRAND.accent}; text-decoration:none;">Open Dashboard</a></p>
     </div>
   </div>
 </body>
 </html>`;
 }
 
-function escapeHtml(str: string): string {
+function esc(str: string): string {
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

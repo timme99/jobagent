@@ -37,6 +37,8 @@ import AuthPage from './AuthPage';
 import * as db from './supabaseService';
 import { supabase, supabaseConfigMissing } from './supabaseClient';
 
+const LOGO_URL = 'https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/logo.png';
+
 // ── Error Boundary ────────────────────────────────────────────────────
 interface ErrorBoundaryProps { children: ReactNode }
 interface ErrorBoundaryState { hasError: boolean; error: Error | null }
@@ -248,27 +250,35 @@ function AppContent() {
     setDigestSending(true);
     setDigestStatus(null);
     try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      console.log('[send-digest] VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL ? 'set' : 'MISSING');
-      console.log('[send-digest] VITE_SUPABASE_ANON_KEY:', anonKey ? `set (${anonKey.slice(0, 10)}…)` : 'MISSING');
+      const { data: { session } } = await supabase.auth.getSession();
 
-      const { data, error } = await supabase.functions.invoke('send-digest', {
-        headers: { apikey: anonKey },
-        body: { email: digestEmail, threshold: matchThreshold },
+      if (!session) {
+        setDigestStatus('Not authenticated. Please sign in again.');
+        return;
+      }
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-digest`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': anonKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: digestEmail, threshold: matchThreshold }),
       });
 
-      console.log('[send-digest] raw response:', { data, error });
+      const data = await res.json();
+      console.log('[send-digest] response:', data);
 
-      if (error) {
-        console.error('[send-digest] invoke error:', error);
-        setDigestStatus(`Failed: ${error.message || 'Unknown error'}`);
-      } else if (data?.success) {
+      if (data.success) {
         setDigestStatus(`Digest sent to ${data.sentTo} (${data.matchCount} matches)`);
-      } else if (data?.error) {
-        console.error('[send-digest] function returned error:', data);
+      } else if (data.error) {
+        console.error('[send-digest] function error:', data);
         setDigestStatus(`Failed: ${data.error}`);
       } else {
-        setDigestStatus(data?.message || 'No matches to send.');
+        setDigestStatus(data.message || 'No matches to send.');
       }
     } catch (err: any) {
       console.error('[send-digest] unexpected error:', err);
@@ -315,13 +325,11 @@ function AppContent() {
       {/* Sidebar */}
       <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} transition-all duration-500 ease-in-out bg-white border-r border-slate-200 flex flex-col z-20 shadow-xl shadow-slate-200/50`}>
         <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 rotate-3 transition-transform hover:rotate-0">
-            <Zap size={20} fill="currentColor" />
-          </div>
+          <img src={LOGO_URL} alt="MyCareerBrain" className="w-10 h-10 rounded-xl object-contain" />
           {isSidebarOpen && (
             <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-              <h1 className="font-bold text-xl tracking-tight leading-none text-slate-800">JobScout</h1>
-              <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Autonomous AI</span>
+              <h1 className="font-norwester text-xl tracking-tight leading-none text-[#30003b]">MyCareerBrain</h1>
+              <span className="text-[10px] font-medium text-slate-500">Stop scrolling. Start matching.</span>
             </div>
           )}
         </div>
@@ -955,14 +963,11 @@ function AppContent() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="mt-16 mb-8 ml-auto mr-auto max-w-3xl px-8 text-center text-xs text-slate-400 leading-relaxed">
-        <div className="border-t border-slate-100 pt-6 space-y-1">
-          <p>
-            <button onClick={() => setView('legal')} className="text-slate-500 hover:text-indigo-600 font-bold underline underline-offset-2 transition-colors">Impressum &amp; Datenschutz</button>
-          </p>
-          <p>Maria Alejandra Diaz Linde &middot; Stuttgart, Germany</p>
-        </div>
+      {/* Footer – fixed at bottom, outside main scroll area */}
+      <footer className="fixed bottom-0 left-0 right-0 z-10 bg-white/90 backdrop-blur border-t border-slate-100 px-4 py-2 flex items-center justify-center gap-4 text-[11px] text-slate-400">
+        <button onClick={() => setView('legal')} className="hover:text-[#11ccf5] font-semibold transition-colors">Impressum &amp; Datenschutz</button>
+        <span>&middot;</span>
+        <span>Maria Alejandra Diaz Linde &middot; Stuttgart, Germany</span>
       </footer>
 
       {/* Loading Overlay */}

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Zap, Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
+import { Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthProvider';
+
+const LOGO_URL = 'https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/logo.png';
 
 export default function AuthPage() {
   const { signIn, signUp, signInWithGoogle } = useAuth();
@@ -49,12 +51,10 @@ export default function AuthPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-10">
-          <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 rotate-3">
-            <Zap size={24} fill="currentColor" />
-          </div>
+          <img src={LOGO_URL} alt="MyCareerBrain" className="w-12 h-12 rounded-xl object-contain" />
           <div>
-            <h1 className="font-bold text-2xl tracking-tight text-slate-800">JobScout</h1>
-            <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Autonomous AI</span>
+            <h1 className="font-norwester text-2xl tracking-tight text-[#30003b]">MyCareerBrain</h1>
+            <span className="text-[10px] font-medium text-slate-500">Stop scrolling. Start matching.</span>
           </div>
         </div>
 
