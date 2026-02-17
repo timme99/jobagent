@@ -58,24 +58,20 @@ serve(async (req: Request) => {
       );
     }
 
+    // Single admin client – uses auto-injected SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Parse optional body params
     const body = await req.json().catch(() => ({}));
-    const threshold = body.threshold ?? 80;
 
-    // Decode the JWT to get user_id.
-    // If the caller passes a service_role key (e.g. cron or Dashboard test)
-    // and includes a user_id in the body, use that instead.
+    // Identify the caller: service-role key (cron) or user JWT (frontend)
+    const token = authHeader.replace('Bearer ', '');
     let userId: string;
     let userEmail: string | undefined;
 
-    const token = authHeader.replace('Bearer ', '');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-    if (token === serviceRoleKey) {
+    if (token === supabaseServiceKey) {
       // Called with service role key (cron job or Dashboard test)
       if (!body.user_id) {
         return new Response(
@@ -86,14 +82,12 @@ serve(async (req: Request) => {
       userId = body.user_id;
       userEmail = body.email;
     } else {
-      // Called with a user JWT (frontend)
-      const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+      // Called with a user JWT (frontend) – verify via the admin client
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
       if (userError || !user) {
+        console.log(`Auth error: ${userError?.message ?? 'No user returned for token'}`);
         return new Response(
-          JSON.stringify({ error: 'Unauthorized' }),
+          JSON.stringify({ error: `Unauthorized: ${userError?.message ?? 'Invalid token'}` }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -101,22 +95,27 @@ serve(async (req: Request) => {
       userEmail = user.email;
     }
 
-    // Load user settings
-    const { data: settings } = await supabase
+    // Load user settings (may not exist yet for new users)
+    const { data: settings, error: settingsError } = await supabase
       .from('user_settings')
-      .select('*')
+      .select('digest_email, match_threshold')
       .eq('user_id', userId)
       .single();
 
+    if (settingsError) {
+      console.log(`user_settings lookup: ${settingsError.message} (user_id: ${userId})`);
+    }
+
+    // Determine recipient: body param > saved setting > auth email
     const recipientEmail = body.email || settings?.digest_email || userEmail;
     if (!recipientEmail) {
       return new Response(
-        JSON.stringify({ error: 'No digest email configured' }),
+        JSON.stringify({ error: 'No digest email configured. Pass "email" in the request body or set one in Settings.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const effectiveThreshold = body.threshold ?? settings?.match_threshold ?? threshold;
+    const effectiveThreshold = body.threshold ?? settings?.match_threshold ?? 80;
 
     // Load recent job matches above the threshold
     const { data: matches, error: matchError } = await supabase
@@ -202,6 +201,7 @@ serve(async (req: Request) => {
     const resendData = await resendRes.json();
 
     if (!resendRes.ok) {
+      console.log(`Resend API error: ${JSON.stringify(resendData)}`);
       return new Response(
         JSON.stringify({ error: 'Resend API error', details: resendData }),
         { status: resendRes.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -219,6 +219,7 @@ serve(async (req: Request) => {
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: any) {
+    console.log(`Unhandled error in send-digest: ${err.message}`);
     return new Response(
       JSON.stringify({ error: err.message || 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
