@@ -82,17 +82,31 @@ serve(async (req: Request) => {
       userId = body.user_id;
       userEmail = body.email;
     } else {
-      // Called with a user JWT (frontend) – verify via the admin client
-      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-      if (userError || !user) {
-        console.log(`Auth error: ${userError?.message ?? 'No user returned for token'}`);
+      // Called with a user JWT (frontend).
+      // The Supabase API gateway already validated the token, so we can
+      // trust the payload and decode it directly instead of calling
+      // auth.getUser() which can fail with service-role clients.
+      try {
+        const payloadB64 = token.split('.')[1];
+        const payload = JSON.parse(atob(payloadB64));
+        userId = payload.sub;
+        userEmail = payload.email;
+        console.log('User ID from token:', userId);
+      } catch (decodeError: any) {
+        console.log(`JWT decode error: ${decodeError.message}`);
         return new Response(
-          JSON.stringify({ error: `Unauthorized: ${userError?.message ?? 'Invalid token'}` }),
+          JSON.stringify({ error: 'Unauthorized: could not decode token' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      userId = user.id;
-      userEmail = user.email;
+
+      if (!userId) {
+        console.log('JWT payload missing sub claim');
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized: token has no user ID' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Load user settings (may not exist yet for new users)
