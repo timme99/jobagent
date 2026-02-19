@@ -91,7 +91,7 @@ function AppContent() {
   const [strategy, setStrategy] = useState<SearchStrategy | null>(null);
   const [matches, setMatches] = useState<JobMatch[]>([]);
   const [shortlistedJobs, setShortlistedJobs] = useState<JobMatch[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Analyzing data...');
 
@@ -322,105 +322,87 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen flex bg-white overflow-hidden font-sans selection:bg-[#11ccf5]/20 selection:text-[#30003b]">
-      {/* Sidebar */}
-      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} transition-all duration-500 ease-in-out bg-[#30003b] flex flex-col z-20 shadow-xl`}>
-        <div className="p-6 flex items-center gap-3">
+    <div className="min-h-screen flex flex-col md:flex-row bg-white overflow-hidden font-sans selection:bg-[#11ccf5]/20 selection:text-[#30003b]">
+      {/* Mobile Top Bar */}
+      <div className="md:hidden sticky top-0 z-30 bg-[#30003b] px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-xl text-[#11ccf5] hover:bg-white/10 transition-colors">
+            <Menu size={22} />
+          </button>
+          <img src={LOGO_URL} alt="MyCareerBrain" className="w-8 h-8 rounded-lg object-contain" />
+          <span className="font-norwester text-lg text-white tracking-tight">MyCareerBrain</span>
+        </div>
+        <div className="w-8 h-8 rounded-xl border border-white/20 overflow-hidden">
+          <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Avatar" />
+        </div>
+      </div>
+
+      {/* Mobile Drawer Overlay */}
+      {isSidebarOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
+      {/* Sidebar / Mobile Drawer */}
+      <aside className={`
+        fixed md:relative inset-y-0 left-0 z-50
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        w-64 md:w-64 transition-transform duration-300 ease-in-out
+        bg-[#30003b] flex flex-col shadow-xl
+      `}>
+        <div className="p-5 md:p-6 flex items-center gap-3">
           <img src={LOGO_URL} alt="MyCareerBrain" className="w-10 h-10 rounded-xl object-contain" />
-          {isSidebarOpen && (
-            <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-              <h1 className="font-norwester text-xl tracking-tight leading-none text-white">MyCareerBrain</h1>
-              <span className="text-[10px] font-medium text-white/50">Stop scrolling. Start matching.</span>
-            </div>
-          )}
+          <div>
+            <h1 className="font-norwester text-xl tracking-tight leading-none text-white">MyCareerBrain</h1>
+            <span className="hidden sm:inline text-[10px] font-medium text-white/50">Stop scrolling. Start matching.</span>
+          </div>
         </div>
 
         <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
-          <NavItem 
-            icon={<User size={20}/>} 
-            label="Master Profile" 
-            active={view === 'profile'} 
-            expanded={isSidebarOpen} 
-            onClick={() => setView('profile')} 
-          />
-          <NavItem 
-            icon={<Target size={20}/>} 
-            label="Search Strategy" 
-            active={view === 'strategy'} 
-            expanded={isSidebarOpen} 
-            onClick={() => setView('strategy')} 
-            disabled={!profile}
-          />
-          <NavItem 
-            icon={<Briefcase size={20}/>} 
-            label="Live Scanner" 
-            active={view === 'scanner'} 
-            expanded={isSidebarOpen} 
-            onClick={() => setView('scanner')} 
-            disabled={!strategy}
-            badge={activeMatches.length > 0 ? activeMatches.length : undefined}
-          />
-          <NavItem 
-            icon={<Settings size={20}/>} 
-            label="Automation" 
-            active={view === 'automation'} 
-            expanded={isSidebarOpen} 
-            onClick={() => setView('automation')} 
-          />
-          <NavItem 
-            icon={<Clock size={20}/>} 
-            label="History" 
-            active={view === 'history'} 
-            expanded={isSidebarOpen} 
-            onClick={() => setView('history')} 
-            badge={shortlistedJobs.length > 0 ? shortlistedJobs.length : undefined}
-          />
+          <NavItem icon={<User size={20}/>} label="Master Profile" active={view === 'profile'} expanded onClick={() => { setView('profile'); setIsSidebarOpen(false); }} />
+          <NavItem icon={<Target size={20}/>} label="Search Strategy" active={view === 'strategy'} expanded onClick={() => { setView('strategy'); setIsSidebarOpen(false); }} disabled={!profile} />
+          <NavItem icon={<Briefcase size={20}/>} label="Live Scanner" active={view === 'scanner'} expanded onClick={() => { setView('scanner'); setIsSidebarOpen(false); }} disabled={!strategy} badge={activeMatches.length > 0 ? activeMatches.length : undefined} />
+          <NavItem icon={<Settings size={20}/>} label="Automation" active={view === 'automation'} expanded onClick={() => { setView('automation'); setIsSidebarOpen(false); }} />
+          <NavItem icon={<Clock size={20}/>} label="History" active={view === 'history'} expanded onClick={() => { setView('history'); setIsSidebarOpen(false); }} badge={shortlistedJobs.length > 0 ? shortlistedJobs.length : undefined} />
         </nav>
 
-        <div className="p-4 border-t border-white/10 space-y-2">
+        <div className="p-4 border-t border-white/10">
           <button
             onClick={signOut}
-            className="w-full flex items-center justify-center gap-2 p-2 rounded-xl hover:bg-white/10 text-white/50 hover:text-red-400 transition-all"
+            className="w-full flex items-center justify-center gap-2 p-3 rounded-xl hover:bg-white/10 text-white/50 hover:text-red-400 transition-all"
           >
             <LogOut size={16} />
-            {isSidebarOpen && <span className="text-xs font-bold">Sign Out</span>}
-          </button>
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="w-full flex items-center justify-center p-2 rounded-xl hover:bg-white/10 text-white/50 hover:text-[#11ccf5] transition-all"
-          >
-            {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+            <span className="text-xs font-bold">Sign Out</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto relative bg-[#F8FAFC]">
-        <header className="sticky top-0 z-10 glass border-b border-slate-200/60 px-8 py-4 flex items-center justify-between">
+        <header className="sticky top-0 z-10 glass border-b border-slate-200/60 px-4 md:px-8 py-3 md:py-4 flex items-center justify-between">
           <div className="animate-in fade-in slide-in-from-top-2 duration-500">
-            <h2 className="text-xl font-bold text-slate-900 capitalize tracking-tight">{view.replace('-', ' ')}</h2>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mt-0.5">Scout AI Intelligence</p>
+            <h2 className="text-lg md:text-xl font-bold text-slate-900 capitalize tracking-tight">{view.replace('-', ' ')}</h2>
+            <p className="text-[10px] md:text-xs font-medium text-slate-400 uppercase tracking-widest mt-0.5">Scout AI Intelligence</p>
           </div>
           <div className="flex items-center gap-4">
              <div className="hidden md:flex flex-col items-end mr-2">
                 <p className="text-xs font-bold text-slate-800 truncate max-w-[200px]">{userEmail}</p>
                 <p className="text-[10px] text-green-500 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> Live Engine Active</p>
              </div>
-             <div className="w-10 h-10 rounded-2xl border-2 border-white bg-white shadow-md flex items-center justify-center overflow-hidden transition-transform hover:scale-105 cursor-pointer">
+             <div className="hidden md:flex w-10 h-10 rounded-2xl border-2 border-white bg-white shadow-md items-center justify-center overflow-hidden transition-transform hover:scale-105 cursor-pointer">
                 <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Avatar" />
              </div>
           </div>
         </header>
 
-        <div className="max-w-6xl mx-auto p-8 pb-20">
+        <div className="max-w-6xl mx-auto px-4 py-6 md:p-8 pb-16 md:pb-20">
           {view === 'profile' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
-              <section className="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 group">
-                <div className="flex items-center gap-4 mb-8">
-                  <div className="p-4 bg-[#11ccf5]/10 text-[#11ccf5] rounded-[1.25rem] transition-transform group-hover:scale-110 group-hover:rotate-3"><Sparkles size={28} fill="currentColor" /></div>
+              <section className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 group">
+                <div className="flex items-start md:items-center gap-3 md:gap-4 mb-6 md:mb-8">
+                  <div className="p-3 md:p-4 bg-[#11ccf5]/10 text-[#11ccf5] rounded-xl md:rounded-[1.25rem] transition-transform group-hover:scale-110 group-hover:rotate-3 flex-shrink-0"><Sparkles size={24} fill="currentColor" /></div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-900">Synthesize Professional Intelligence</h3>
-                    <p className="text-slate-500 font-medium">Combine multiple sources for a high-fidelity career analysis.</p>
+                    <h3 className="text-xl md:text-2xl font-black text-slate-900">Synthesize Professional Intelligence</h3>
+                    <p className="text-slate-500 font-medium text-sm">Combine multiple sources for a high-fidelity career analysis.</p>
                   </div>
                 </div>
                 
@@ -473,15 +455,15 @@ function AppContent() {
                   </div>
                 </div>
 
-                <div className="mt-10 flex items-center justify-between">
-                  <div className="flex gap-2">
+                <div className="mt-8 md:mt-10 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+                  <div className="hidden md:flex gap-2">
                     <div className="px-3 py-1.5 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500 uppercase tracking-wider">Quota-Optimized Engine</div>
                     <div className="px-3 py-1.5 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500 uppercase tracking-wider">Zero-Cost Infra</div>
                   </div>
-                  <button 
+                  <button
                     onClick={handleSynthesize}
                     disabled={isLoading || (!profileUrl.trim() && !cvText.trim())}
-                    className="group relative overflow-hidden bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold transition-all hover:bg-slate-800 disabled:opacity-40 shadow-xl shadow-slate-200 hover:shadow-[#11ccf5]/10 hover:-translate-y-1 flex items-center gap-3"
+                    className="group relative overflow-hidden bg-slate-900 text-white px-8 md:px-10 py-4 rounded-2xl font-bold transition-all hover:bg-slate-800 disabled:opacity-40 shadow-xl shadow-slate-200 hover:shadow-[#11ccf5]/10 hover:-translate-y-1 flex items-center justify-center gap-3"
                   >
                     <span className="relative z-10">{isLoading ? 'Synthesizing Intelligence...' : 'Build Unified Profile'}</span>
                     <ChevronRight size={18} className="relative z-10 transition-transform group-hover:translate-x-1" />
@@ -491,8 +473,8 @@ function AppContent() {
               </section>
 
               {profile && (
-                <div className="grid lg:grid-cols-3 gap-8 animate-in zoom-in-95 duration-1000">
-                  <div className="lg:col-span-2 bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+                <div className="grid lg:grid-cols-3 gap-6 md:gap-8 animate-in zoom-in-95 duration-1000">
+                  <div className="lg:col-span-2 bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                     <div className="flex items-center justify-between mb-8">
                        <h4 className="font-black text-2xl text-slate-900 flex items-center gap-3">
                         <div className="w-1.5 h-8 bg-[#11ccf5] rounded-full" />
@@ -568,13 +550,13 @@ function AppContent() {
 
           {view === 'strategy' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
-               <section className="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 relative overflow-hidden group">
+               <section className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-amber-50 rounded-full -mr-32 -mt-32 blur-3xl opacity-50 transition-transform group-hover:scale-110 duration-1000" />
-                <div className="flex items-center gap-4 mb-8 relative z-10">
-                  <div className="p-4 bg-amber-50 text-amber-600 rounded-[1.25rem]"><Target size={28} /></div>
+                <div className="flex items-start md:items-center gap-3 md:gap-4 mb-6 md:mb-8 relative z-10">
+                  <div className="p-3 md:p-4 bg-amber-50 text-amber-600 rounded-xl md:rounded-[1.25rem] flex-shrink-0"><Target size={24} /></div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-900">Define Strategic Rules</h3>
-                    <p className="text-slate-500 font-medium">The blueprint for your autonomous AI scout.</p>
+                    <h3 className="text-xl md:text-2xl font-black text-slate-900">Define Strategic Rules</h3>
+                    <p className="text-slate-500 font-medium text-sm">The blueprint for your autonomous AI scout.</p>
                   </div>
                 </div>
                 
@@ -633,10 +615,10 @@ function AppContent() {
 
           {view === 'scanner' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-8 rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-6 bg-white p-5 md:p-8 rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <div className="flex-1 w-full space-y-4">
-                  <h3 className="text-2xl font-black text-slate-900">Opportunity Scanner</h3>
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <h3 className="text-xl md:text-2xl font-black text-slate-900">Opportunity Scanner</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                     <div className="relative group">
                       <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#11ccf5] transition-colors" size={18} />
                       <input 
@@ -659,10 +641,10 @@ function AppContent() {
                     </div>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={handleScan}
                   disabled={isLoading}
-                  className="w-full md:w-auto flex items-center justify-center gap-3 bg-[#11ccf5] text-white px-10 py-8 rounded-[2rem] font-black hover:bg-[#0ea5c9] transition-all shadow-xl shadow-[#11ccf5]/10 disabled:opacity-50 active:scale-95"
+                  className="w-full md:w-auto flex items-center justify-center gap-3 bg-[#11ccf5] text-white px-8 md:px-10 py-5 md:py-8 rounded-2xl md:rounded-[2rem] font-black hover:bg-[#0ea5c9] transition-all shadow-xl shadow-[#11ccf5]/10 disabled:opacity-50 active:scale-95"
                 >
                   {isLoading ? <Loader2 className="animate-spin" size={28} /> : <Zap size={28} fill="currentColor" />}
                   <div className="text-left">
@@ -712,11 +694,11 @@ function AppContent() {
 
           {view === 'automation' && (
             <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
-               <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
-                <div className="flex items-center gap-4 mb-10">
-                  <div className="p-4 bg-[#11ccf5]/10 text-[#11ccf5] rounded-2xl"><Mail size={28} /></div>
+               <section className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+                <div className="flex items-start md:items-center gap-3 md:gap-4 mb-6 md:mb-10">
+                  <div className="p-3 md:p-4 bg-[#11ccf5]/10 text-[#11ccf5] rounded-xl md:rounded-2xl flex-shrink-0"><Mail size={24} /></div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-900">Morning Digest Subscription</h3>
+                    <h3 className="text-xl md:text-2xl font-black text-slate-900">Morning Digest Subscription</h3>
                     <p className="text-slate-500 font-medium text-sm">Automated background scanning & email notifications.</p>
                   </div>
                 </div>
@@ -754,14 +736,14 @@ function AppContent() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                    <div className="flex-1 mr-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between p-5 md:p-6 bg-slate-50 rounded-2xl md:rounded-3xl border border-slate-100 gap-3">
+                    <div className="flex-1">
                       <h4 className="font-bold text-slate-900">Digest Email</h4>
                       <p className="text-xs text-slate-500">Where to send your daily job digest.</p>
                     </div>
                     <input
                       type="email"
-                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
+                      className="w-full md:w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
                       placeholder="your@email.com"
                       value={digestEmail}
                       onChange={(e) => setDigestEmail(e.target.value)}
@@ -776,9 +758,9 @@ function AppContent() {
                     </div>
                   )}
 
-                  <div className="p-8 bg-[#30003b] text-white rounded-[2.5rem] shadow-2xl shadow-[#11ccf5]/10 relative overflow-hidden">
+                  <div className="p-6 md:p-8 bg-[#30003b] text-white rounded-[2rem] md:rounded-[2.5rem] shadow-2xl shadow-[#11ccf5]/10 relative overflow-hidden">
                     <div className="relative z-10">
-                      <h4 className="text-xl font-black mb-2 flex items-center gap-2">
+                      <h4 className="text-lg md:text-xl font-black mb-2 flex items-center gap-2">
                         <Mail size={20} /> Send Digest Now
                       </h4>
                       <p className="text-[#11ccf5]/60 text-sm mb-6 leading-relaxed">
@@ -787,7 +769,7 @@ function AppContent() {
                       <button
                         onClick={handleSendDigest}
                         disabled={digestSending}
-                        className="bg-white text-[#30003b] px-8 py-3 rounded-2xl font-black text-sm hover:bg-[#11ccf5]/10 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                        className="w-full md:w-auto bg-white text-[#30003b] px-8 py-4 md:py-3 rounded-2xl font-black text-sm hover:bg-[#11ccf5]/10 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                       >
                         {digestSending ? <><Loader2 size={16} className="animate-spin" /> Sending...</> : 'Send Test Digest'}
                       </button>
@@ -856,7 +838,7 @@ function AppContent() {
               </div>
 
               {/* Impressum */}
-              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+              <section className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <h3 className="text-2xl font-black text-slate-900 mb-6">Impressum</h3>
                 <p className="text-sm text-slate-500 mb-4">Angaben gem&auml;&szlig; &sect; 5 TMG</p>
                 <div className="text-slate-700 text-sm leading-relaxed space-y-1">
@@ -872,7 +854,7 @@ function AppContent() {
               </section>
 
               {/* Datenschutzerkl&auml;rung */}
-              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+              <section className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <h3 className="text-2xl font-black text-slate-900 mb-6">Datenschutzerkl&auml;rung</h3>
                 <p className="text-sm text-slate-500 mb-6">gem&auml;&szlig; Art. 13 DSGVO</p>
 
@@ -956,11 +938,11 @@ function AppContent() {
         </div>
       </main>
 
-      {/* Footer – fixed at bottom, outside main scroll area */}
-      <footer className="fixed bottom-0 left-0 right-0 z-10 bg-white/90 backdrop-blur border-t border-slate-100 px-4 py-2 flex items-center justify-center gap-4 text-[11px] text-slate-400">
-        <button onClick={() => setView('legal')} className="hover:text-[#11ccf5] font-semibold transition-colors">Impressum &amp; Datenschutz</button>
-        <span>&middot;</span>
-        <span>Maria Alejandra Diaz Linde &middot; Stuttgart, Germany</span>
+      {/* Footer – fixed at bottom, offset for sidebar on desktop */}
+      <footer className="fixed bottom-0 left-0 md:left-64 right-0 z-10 bg-white/90 backdrop-blur border-t border-slate-100 px-4 py-2 flex items-center justify-center gap-2 md:gap-4 text-[10px] md:text-[11px] text-slate-400">
+        <button onClick={() => { setView('legal'); setIsSidebarOpen(false); }} className="hover:text-[#11ccf5] font-semibold transition-colors">Impressum &amp; Datenschutz</button>
+        <span className="hidden md:inline">&middot;</span>
+        <span className="hidden md:inline">Maria Alejandra Diaz Linde &middot; Stuttgart, Germany</span>
       </footer>
 
       {/* Loading Overlay */}
@@ -1064,6 +1046,25 @@ function NavItem({ icon, label, active, onClick, expanded, disabled, badge }: { 
   );
 }
 
+/** Returns a valid, clickable URL or null if no usable link exists. */
+function getJobLink(match: JobMatch): string | null {
+  // Check multiple possible fields (raw data may carry extras from API)
+  const raw = match as any;
+  const candidates: (string | undefined)[] = [
+    match.link,
+    raw.job_url,
+    raw.external_url,
+    raw.apply_link,
+    raw.job_apply_link,
+    raw.job_google_link,
+    raw.url,
+  ];
+  for (const c of candidates) {
+    if (c && typeof c === 'string' && c !== '#' && c.startsWith('http')) return c;
+  }
+  return null;
+}
+
 interface JobCardProps {
   match: JobMatch;
   onAccept?: () => void;
@@ -1071,13 +1072,14 @@ interface JobCardProps {
   isShortlisted?: boolean;
 }
 
-function JobCard({ 
-  match, 
-  onAccept, 
-  onDismiss, 
-  isShortlisted 
+function JobCard({
+  match,
+  onAccept,
+  onDismiss,
+  isShortlisted
 }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const jobLink = getJobLink(match);
 
   const getScoreColor = (score: number) => {
     if (score >= 85) return 'text-green-600 bg-green-50 border-green-200 shadow-green-100';
@@ -1086,13 +1088,13 @@ function JobCard({
   };
 
   return (
-    <div className={`bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40 transition-all duration-500 overflow-hidden hover:shadow-2xl hover:shadow-[#11ccf5]/10/30 ${expanded ? 'scale-[1.02] border-[#11ccf5]/30' : ''}`}>
-      <div className="p-8 flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex flex-wrap items-center gap-4 mb-4">
-            <h4 className="text-2xl font-black text-slate-900 tracking-tight leading-none">{match.title}</h4>
-            <div className={`px-4 py-2 rounded-2xl border-2 text-sm font-black shadow-sm ${getScoreColor(match.score)}`}>
-              {match.score}% Score
+    <div className={`bg-white rounded-[2rem] md:rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40 transition-all duration-500 overflow-hidden hover:shadow-2xl hover:shadow-[#11ccf5]/10/30 ${expanded ? 'md:scale-[1.02] border-[#11ccf5]/30' : ''}`}>
+      <div className="p-5 md:p-8 flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-3 md:mb-4">
+            <h4 className="text-lg md:text-2xl font-black text-slate-900 tracking-tight leading-tight">{match.title}</h4>
+            <div className={`px-3 md:px-4 py-1.5 md:py-2 rounded-xl md:rounded-2xl border-2 text-xs md:text-sm font-black shadow-sm whitespace-nowrap ${getScoreColor(match.score)}`}>
+              {match.score}%
             </div>
             {match.source && (
               <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
@@ -1109,13 +1111,13 @@ function JobCard({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-4 text-sm font-bold">
+          <div className="flex flex-wrap items-center gap-2 md:gap-4 text-xs md:text-sm font-bold">
             <p className="text-[#11ccf5] uppercase tracking-widest">{match.company}</p>
             <div className="w-1 h-1 bg-slate-200 rounded-full" />
             <p className="text-slate-400">{match.location}</p>
           </div>
-          
-          <div className="mt-8 grid md:grid-cols-2 gap-6">
+
+          <div className="mt-5 md:mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             <div className="space-y-3">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Strategic Pros</p>
               <div className="flex flex-wrap gap-2">
@@ -1138,47 +1140,49 @@ function JobCard({
             </div>
           </div>
 
-          <div className="mt-8 flex items-center gap-4">
+          <div className="mt-5 md:mt-8 flex flex-wrap items-center gap-2 md:gap-4">
             {onAccept && (
-              <button 
+              <button
                 onClick={(e) => { e.stopPropagation(); onAccept(); }}
-                className="px-6 py-2.5 bg-[#11ccf5] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#0ea5c9] transition-all shadow-lg shadow-[#11ccf5]/10 flex items-center gap-2"
+                className="px-5 md:px-6 py-3 md:py-2.5 bg-[#11ccf5] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#0ea5c9] transition-all shadow-lg shadow-[#11ccf5]/10 flex items-center gap-2 flex-1 md:flex-none justify-center"
               >
                 <BookmarkCheck size={14} />
-                Save Match
+                Save
               </button>
             )}
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); onDismiss?.(); }}
-              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isShortlisted ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+              className={`px-5 md:px-6 py-3 md:py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-1 md:flex-none justify-center ${isShortlisted ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
             >
               <Trash2 size={14} />
               {isShortlisted ? 'Remove' : 'Dismiss'}
             </button>
-            <a 
-              href={match.link} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center gap-2"
-            >
-              <ExternalLink size={14} />
-              Original Post
-            </a>
+            {jobLink && (
+              <a
+                href={jobLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="px-5 md:px-6 py-3 md:py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center gap-2 flex-1 md:flex-none justify-center"
+              >
+                <ExternalLink size={14} />
+                View Post
+              </a>
+            )}
           </div>
         </div>
         
-        <button 
+        <button
           onClick={() => setExpanded(!expanded)}
-          className={`p-4 rounded-2xl transition-all duration-300 ${expanded ? 'bg-[#11ccf5] text-white rotate-180' : 'bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-[#11ccf5]'}`}
+          className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all duration-300 flex-shrink-0 ${expanded ? 'bg-[#11ccf5] text-white rotate-180' : 'bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-[#11ccf5]'}`}
         >
-          <ChevronDown size={24} />
+          <ChevronDown size={20} />
         </button>
       </div>
 
       {expanded && (
-        <div className="px-8 pb-8 pt-4 border-t border-slate-50 animate-in slide-in-from-top-4 duration-500">
-           <div className="grid lg:grid-cols-3 gap-8">
+        <div className="px-5 md:px-8 pb-5 md:pb-8 pt-4 border-t border-slate-50 animate-in slide-in-from-top-4 duration-500">
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
              <div className="lg:col-span-2 space-y-4">
                 <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest">Description Intel</h5>
                 <div className="bg-slate-50 p-6 rounded-3xl text-sm text-slate-600 font-medium leading-relaxed border border-slate-100 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">

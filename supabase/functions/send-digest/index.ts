@@ -330,7 +330,13 @@ function buildMatchesEmail(
 ): string {
   const jobRows = matches
     .map(
-      (m: any) => `
+      (m: any) => {
+        // Resolve the best available link from multiple possible fields
+        const link = resolveJobLink(m);
+        const linkCell = link
+          ? `<a href="${esc(link)}" style="display:inline-block; background:${BRAND.accent}; color:${BRAND.bg}; padding:9px 18px; border-radius:12px; font-size:13px; font-weight:700; text-decoration:none;">View&nbsp;&rarr;</a>`
+          : `<span style="display:inline-block; color:#94a3b8; font-size:12px; font-weight:600;">No link</span>`;
+        return `
       <tr>
         <td style="padding:14px 20px; border-bottom:1px solid #f1f5f9;">
           <div style="font-weight:700; color:#0f172a; font-size:15px;">${esc(m.title)}</div>
@@ -341,9 +347,10 @@ function buildMatchesEmail(
           </div>
         </td>
         <td style="padding:14px 20px; border-bottom:1px solid #f1f5f9; text-align:right; vertical-align:middle;">
-          <a href="${esc(m.link || '#')}" style="display:inline-block; background:${BRAND.accent}; color:${BRAND.bg}; padding:9px 18px; border-radius:12px; font-size:13px; font-weight:700; text-decoration:none;">View&nbsp;&rarr;</a>
+          ${linkCell}
         </td>
-      </tr>`,
+      </tr>`;
+      },
     )
     .join('');
 
@@ -370,6 +377,23 @@ function buildMatchesEmail(
   </div>
 </body>
 </html>`;
+}
+
+/** Picks the best available link from a job match row (DB columns may vary). */
+function resolveJobLink(m: any): string | null {
+  const candidates: (string | undefined)[] = [
+    m.link,
+    m.job_url,
+    m.external_url,
+    m.apply_link,
+    m.job_apply_link,
+    m.job_google_link,
+    m.url,
+  ];
+  for (const c of candidates) {
+    if (c && typeof c === 'string' && c !== '#' && c.startsWith('http')) return c;
+  }
+  return null;
 }
 
 function esc(str: string): string {

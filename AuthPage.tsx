@@ -59,7 +59,7 @@ export default function AuthPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+        <div className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100">
           <h2 className="text-2xl font-black text-slate-900 text-center mb-2">
             {isSignUp ? 'Create Your Account' : 'Welcome Back'}
           </h2>
