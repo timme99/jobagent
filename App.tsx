@@ -67,7 +67,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <p className="text-xs text-slate-400 mb-8">Try refreshing or clearing your browser data if this persists.</p>
             <button
               onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
-              className="inline-flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-2xl font-bold hover:bg-slate-800 transition-colors"
+              className="inline-flex items-center gap-2 text-white px-8 py-3 rounded-2xl font-bold transition-colors"
+              style={{ background: '#30003b' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#1a0024')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#30003b')}
             >
               <RefreshCw size={16} /> Reload App
             </button>
@@ -359,9 +362,9 @@ function AppContent() {
 
   if (!dataLoaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 size={40} className="animate-spin text-indigo-600" />
+          <Loader2 size={40} className="animate-spin" style={{ color: '#30003b' }} />
           <p className="text-slate-500 font-medium">Loading your data...</p>
         </div>
       </div>
@@ -369,17 +372,19 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50 overflow-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900">
+    <div className="min-h-screen flex bg-white overflow-hidden selection:bg-[#11ccf5]/20 selection:text-[#30003b]">
       {/* Sidebar */}
-      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} transition-all duration-500 ease-in-out bg-white border-r border-slate-200 flex flex-col z-20 shadow-xl shadow-slate-200/50`}>
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 rotate-3 transition-transform hover:rotate-0">
-            <Zap size={20} fill="currentColor" />
-          </div>
+      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} transition-all duration-500 ease-in-out flex flex-col z-20 shadow-2xl`}
+             style={{ background: 'linear-gradient(180deg, #30003b 0%, #1a0024 100%)' }}>
+        <div className="p-5 flex items-center gap-3 min-h-[72px]">
+          <img
+            src="https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/W%26Blogo.png"
+            alt="MyCareerBrain"
+            className={`object-contain flex-shrink-0 transition-all duration-300 ${isSidebarOpen ? 'h-8 w-auto' : 'h-7 w-7'}`}
+          />
           {isSidebarOpen && (
-            <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-              <h1 className="font-bold text-xl tracking-tight leading-none text-slate-800">JobScout</h1>
-              <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Autonomous AI</span>
+            <div className="animate-in fade-in slide-in-from-left-2 duration-300 min-w-0">
+              <h1 className="text-sm leading-none text-white/90 uppercase tracking-widest truncate">MyCareerBrain</h1>
             </div>
           )}
         </div>
@@ -426,28 +431,29 @@ function AppContent() {
           />
         </nav>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-2">
+        <div className="p-4 border-t border-white/10 space-y-2">
           {/* User identity chip */}
           <div className={`flex items-center gap-3 px-2 py-1.5 rounded-2xl ${isSidebarOpen ? '' : 'justify-center'}`}>
-            <div className="w-8 h-8 bg-violet-600 text-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                 style={{ background: 'rgba(17,204,245,0.2)', color: '#11ccf5' }}>
               {getAvatarIcon(avatarIcon, 16)}
             </div>
             {isSidebarOpen && (
-              <p className="text-xs font-bold text-slate-700 truncate flex-1 leading-tight">
+              <p className="text-xs font-bold text-white/75 truncate flex-1 leading-tight">
                 {displayName || userEmail}
               </p>
             )}
           </div>
           <button
             onClick={signOut}
-            className="w-full flex items-center justify-center gap-2 p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600 transition-all shadow-sm border border-transparent hover:border-red-200"
+            className="w-full flex items-center justify-center gap-2 p-2 rounded-xl text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"
           >
             <LogOut size={16} />
             {isSidebarOpen && <span className="text-xs font-bold">Sign Out</span>}
           </button>
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="w-full flex items-center justify-center p-2 rounded-xl hover:bg-white text-slate-400 hover:text-indigo-600 transition-all shadow-sm border border-transparent hover:border-slate-200"
+            className="w-full flex items-center justify-center p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all"
           >
             {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
@@ -459,14 +465,14 @@ function AppContent() {
         <header className="sticky top-0 z-10 glass border-b border-slate-200/60 px-8 py-4 flex items-center justify-between">
           <div className="animate-in fade-in slide-in-from-top-2 duration-500">
             <h2 className="text-xl font-bold text-slate-900 capitalize tracking-tight">{view.replace('-', ' ')}</h2>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mt-0.5">Scout AI Intelligence</p>
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mt-0.5">MyCareerBrain</p>
           </div>
           <div className="flex items-center gap-4">
              <div className="hidden md:flex flex-col items-end mr-2">
                 <p className="text-xs font-bold text-slate-800 truncate max-w-[200px]">{displayName || userEmail}</p>
-                <p className="text-[10px] text-green-500 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> Live Engine Active</p>
+                <p className="text-[10px] font-bold flex items-center gap-1" style={{ color: '#11ccf5' }}><span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#11ccf5' }} /> Live Engine Active</p>
              </div>
-             <div className="w-10 h-10 rounded-2xl border-2 border-white bg-violet-600 text-white shadow-md flex items-center justify-center transition-transform hover:scale-105 cursor-pointer" onClick={() => setView('automation')}>
+             <div className="w-10 h-10 rounded-2xl border-2 border-white shadow-md flex items-center justify-center transition-transform hover:scale-105 cursor-pointer" style={{ background: '#30003b', color: 'white' }} onClick={() => setView('automation')}>
                 {getAvatarIcon(avatarIcon, 20)}
              </div>
           </div>
@@ -477,7 +483,7 @@ function AppContent() {
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
               <section className="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 group">
                 <div className="flex items-center gap-4 mb-8">
-                  <div className="p-4 bg-indigo-50 text-indigo-600 rounded-[1.25rem] transition-transform group-hover:scale-110 group-hover:rotate-3"><Sparkles size={28} fill="currentColor" /></div>
+                  <div className="p-4 rounded-[1.25rem] transition-transform group-hover:scale-110 group-hover:rotate-3" style={{ background: 'rgba(48,0,59,0.06)', color: '#30003b' }}><Sparkles size={28} fill="currentColor" /></div>
                   <div>
                     <h3 className="text-2xl font-black text-slate-900">Synthesize Professional Intelligence</h3>
                     <p className="text-slate-500 font-medium">Combine multiple sources for a high-fidelity career analysis.</p>
@@ -488,12 +494,12 @@ function AppContent() {
                   {/* LinkedIn URL Input */}
                   <div className="space-y-2">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
-                      <Linkedin size={14} className="text-indigo-500" /> LinkedIn Profile (Public Link)
+                      <Linkedin size={14} style={{ color: '#30003b' }} /> LinkedIn Profile (Public Link)
                     </label>
                     <div className="relative">
                       <input 
                         type="text"
-                        className="w-full pl-6 pr-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 transition-all outline-none bg-slate-50/50 text-slate-700 font-bold"
+                        className="w-full pl-6 pr-6 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] transition-all outline-none bg-slate-50/50 text-slate-700 font-bold"
                         placeholder="https://linkedin.com/in/your-profile"
                         value={profileUrl}
                         onChange={(e) => setProfileUrl(e.target.value)}
@@ -504,10 +510,10 @@ function AppContent() {
                   {/* CV / Bio Input */}
                   <div className="space-y-2">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
-                      <FileText size={14} className="text-indigo-500" /> CV or Professional Career Bio
+                      <FileText size={14} style={{ color: '#30003b' }} /> CV or Professional Career Bio
                     </label>
                     <textarea 
-                      className="w-full h-48 p-6 rounded-3xl border border-slate-200 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
+                      className="w-full h-48 p-6 rounded-3xl border border-slate-200 focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
                       placeholder="Paste your CV text, or talk about your career journey in your own words..."
                       value={cvText}
                       onChange={(e) => setCvText(e.target.value)}
@@ -517,10 +523,10 @@ function AppContent() {
                   {/* Extra Context Input */}
                   <div className="space-y-2">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
-                      <PlusCircle size={14} className="text-indigo-500" /> Application Extras
+                      <PlusCircle size={14} style={{ color: '#30003b' }} /> Application Extras
                     </label>
                     <textarea 
-                      className="w-full h-24 p-6 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
+                      className="w-full h-24 p-6 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
                       placeholder="Specify any extras you want considered (e.g., 'I speak fluent Spanish', 'Looking for roles with a heavy focus on mentorship')..."
                       value={extraContext}
                       onChange={(e) => setExtraContext(e.target.value)}
@@ -538,14 +544,15 @@ function AppContent() {
                     <div className="px-3 py-1.5 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500 uppercase tracking-wider">Quota-Optimized Engine</div>
                     <div className="px-3 py-1.5 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500 uppercase tracking-wider">Zero-Cost Infra</div>
                   </div>
-                  <button 
+                  <button
                     onClick={handleSynthesize}
                     disabled={isLoading || (!profileUrl.trim() && !cvText.trim())}
-                    className="group relative overflow-hidden bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold transition-all hover:bg-slate-800 disabled:opacity-40 shadow-xl shadow-slate-200 hover:shadow-indigo-100 hover:-translate-y-1 flex items-center gap-3"
+                    className="group relative overflow-hidden text-white px-10 py-4 rounded-2xl font-bold transition-all disabled:opacity-40 shadow-xl hover:-translate-y-1 flex items-center gap-3"
+                    style={{ background: '#30003b' }}
                   >
                     <span className="relative z-10">{isLoading ? 'Synthesizing Intelligence...' : 'Build Unified Profile'}</span>
                     <ChevronRight size={18} className="relative z-10 transition-transform group-hover:translate-x-1" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-violet-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'linear-gradient(90deg, #30003b, #11ccf5)' }} />
                   </button>
                 </div>
               </section>
@@ -555,10 +562,10 @@ function AppContent() {
                   <div className="lg:col-span-2 bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                     <div className="flex items-center justify-between mb-8">
                        <h4 className="font-black text-2xl text-slate-900 flex items-center gap-3">
-                        <div className="w-1.5 h-8 bg-indigo-600 rounded-full" />
+                        <div className="w-1.5 h-8 rounded-full" style={{ background: '#30003b' }} />
                         {profile.name}
                       </h4>
-                      <button className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><Settings size={18}/></button>
+                      <button className="p-2 text-slate-400 transition-colors" onMouseEnter={e => (e.currentTarget.style.color='#30003b')} onMouseLeave={e => (e.currentTarget.style.color='')}><Settings size={18}/></button>
                     </div>
                     <p className="text-lg text-slate-600 mb-10 leading-relaxed font-medium bg-slate-50 p-6 rounded-3xl border border-slate-100 italic">
                       "{profile.summary}"
@@ -567,11 +574,11 @@ function AppContent() {
                       <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-slate-100" />
                       {profile.experience.map((exp, i) => (
                         <div key={i} className="relative pl-12 group/item">
-                          <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-white border-4 border-indigo-600 group-hover/item:scale-125 transition-transform z-10" />
+                          <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-white border-4 group-hover/item:scale-125 transition-transform z-10" style={{ borderColor: '#30003b' }} />
                           <div className="flex justify-between items-start mb-1">
                             <h5 className="font-black text-slate-900 text-lg">{exp.role}</h5>
                           </div>
-                          <p className="text-indigo-600 font-bold text-sm mb-3 tracking-wide">{exp.company}</p>
+                          <p className="font-bold text-sm mb-3 tracking-wide" style={{ color: '#30003b' }}>{exp.company}</p>
                           <ul className="space-y-2">
                             {exp.highlights.map((h, j) => (
                               <li key={j} className="text-sm text-slate-500 font-medium flex gap-2">
@@ -585,9 +592,9 @@ function AppContent() {
                     </div>
                   </div>
                   <div className="space-y-8">
-                    <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-2xl shadow-indigo-200 relative overflow-hidden group">
-                      <div className="absolute -right-8 -top-8 w-32 h-32 bg-indigo-500/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000" />
-                      <h4 className="font-black text-lg mb-6 flex items-center gap-2 relative z-10 uppercase tracking-widest text-indigo-400">
+                    <div className="text-white p-8 rounded-[2rem] shadow-2xl relative overflow-hidden group" style={{ background: '#30003b' }}>
+                      <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000" style={{ background: 'rgba(17,204,245,0.1)' }} />
+                      <h4 className="font-black text-lg mb-6 flex items-center gap-2 relative z-10 uppercase tracking-widest" style={{ color: '#11ccf5' }}>
                         <Sparkles size={20} fill="currentColor"/> Hidden Strengths
                       </h4>
                       <div className="flex flex-wrap gap-2 relative z-10">
@@ -598,11 +605,11 @@ function AppContent() {
                     </div>
                     <div className="bg-white p-8 rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                       <h4 className="font-black text-slate-900 mb-6 uppercase tracking-widest text-xs flex items-center gap-2">
-                        <Zap size={16} className="text-indigo-600" /> Core Competencies
+                        <Zap size={16} style={{ color: '#11ccf5' }} /> Core Competencies
                       </h4>
                       <div className="flex flex-wrap gap-2">
                         {profile.skills.map((s, i) => (
-                          <span key={i} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-100 hover:shadow-md transition-all cursor-default">{s}</span>
+                          <span key={i} className="px-3 py-1.5 rounded-lg text-xs font-bold hover:shadow-md transition-all cursor-default" style={{ background: 'rgba(48,0,59,0.06)', color: '#30003b', border: '1px solid rgba(48,0,59,0.1)' }}>{s}</span>
                         ))}
                       </div>
                     </div>
@@ -612,7 +619,7 @@ function AppContent() {
                         <ul className="space-y-2">
                           {profileSources.map((source, i) => (source.web?.uri || source.maps?.uri) && (
                             <li key={i}>
-                              <a href={source.web?.uri || source.maps?.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-indigo-500 hover:underline flex items-center gap-1">
+                              <a href={source.web?.uri || source.maps?.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold hover:underline flex items-center gap-1" style={{ color: '#30003b' }}>
                                 <ExternalLink size={10} /> {source.web?.title || 'LinkedIn Profile'}
                               </a>
                             </li>
@@ -666,7 +673,7 @@ function AppContent() {
                     <ul className="space-y-4">
                       {strategy.priorities.map((p, i) => (
                         <li key={i} className="flex gap-4 items-start p-4 bg-slate-50 rounded-2xl border border-slate-100 group/p">
-                          <span className="w-6 h-6 bg-white text-slate-400 flex-shrink-0 flex items-center justify-center rounded-lg text-[10px] font-black border border-slate-200 group-hover/p:border-indigo-400 group-hover/p:text-indigo-600 transition-colors shadow-sm">{i+1}</span>
+                          <span className="w-6 h-6 bg-white text-slate-400 flex-shrink-0 flex items-center justify-center rounded-lg text-[10px] font-black border border-slate-200 group-hover/p:border-[#30003b] group-hover/p:text-[#30003b] transition-colors shadow-sm">{i+1}</span>
                           <span className="text-sm font-semibold text-slate-700 leading-tight">{p}</span>
                         </li>
                       ))}
@@ -698,7 +705,7 @@ function AppContent() {
                   <h3 className="text-2xl font-black text-slate-900">Opportunity Scanner</h3>
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="relative group">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#30003b] transition-colors" size={18} />
                       <input 
                         type="text" 
                         placeholder="Keywords (SaaS, Customer Success...)" 
@@ -708,7 +715,7 @@ function AppContent() {
                       />
                     </div>
                     <div className="relative group">
-                      <Target className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                      <Target className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#30003b] transition-colors" size={18} />
                       <input 
                         type="text" 
                         placeholder="Location (Remote, Berlin...)" 
@@ -722,7 +729,10 @@ function AppContent() {
                 <button 
                   onClick={handleScan}
                   disabled={isLoading}
-                  className="w-full md:w-auto flex items-center justify-center gap-3 bg-indigo-600 text-white px-10 py-8 rounded-[2rem] font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 disabled:opacity-50 active:scale-95"
+                  className="w-full md:w-auto flex items-center justify-center gap-3 text-white px-10 py-8 rounded-[2rem] font-black transition-all shadow-xl disabled:opacity-50 active:scale-95"
+                  style={{ background: '#30003b' }}
+                  onMouseEnter={e => { if (!isLoading) e.currentTarget.style.background = '#1a0024'; }}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#30003b')}
                 >
                   {isLoading ? <Loader2 className="animate-spin" size={28} /> : <Zap size={28} fill="currentColor" />}
                   <div className="text-left">
@@ -776,12 +786,12 @@ function AppContent() {
               {/* ── Profile / Identity section ─────────────────────────────── */}
               <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <div className="flex items-center gap-4 mb-10">
-                  <div className="p-4 bg-violet-50 text-violet-600 rounded-2xl">
+                  <div className="p-4 rounded-2xl" style={{ background: 'rgba(48,0,59,0.06)', color: '#30003b' }}>
                     {getAvatarIcon(avatarIcon, 28)}
                   </div>
                   <div>
                     <h3 className="text-2xl font-black text-slate-900">Your Identity</h3>
-                    <p className="text-slate-500 font-medium text-sm">How Scout AI addresses you in digest emails.</p>
+                    <p className="text-slate-500 font-medium text-sm">How MyCareerBrain addresses you in digest emails.</p>
                   </div>
                 </div>
 
@@ -794,7 +804,7 @@ function AppContent() {
                     </div>
                     <input
                       type="text"
-                      className="w-48 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-violet-100 focus:border-violet-400 outline-none transition-all"
+                      className="w-48 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
                       placeholder="Your name"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
@@ -816,9 +826,10 @@ function AppContent() {
                           onClick={() => { setAvatarIcon(opt.id); db.saveSettings(userId, { avatarIcon: opt.id }); }}
                           className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
                             avatarIcon === opt.id
-                              ? 'bg-violet-600 text-white shadow-lg shadow-violet-200 scale-110'
-                              : 'bg-white border border-slate-200 text-slate-500 hover:border-violet-300 hover:text-violet-600'
+                              ? 'text-white shadow-lg scale-110'
+                              : 'bg-white border border-slate-200 text-slate-500 hover:border-[#30003b]/30 hover:text-[#30003b]'
                           }`}
+                          style={avatarIcon === opt.id ? { background: '#30003b' } : {}}
                         >
                           {opt.icon}
                         </button>
@@ -833,7 +844,7 @@ function AppContent() {
                       <p className="text-xs text-slate-500">Auto-detected · controls your 8:00 AM digest delivery.</p>
                     </div>
                     <select
-                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-violet-100 focus:border-violet-400 outline-none cursor-pointer transition-all"
+                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none cursor-pointer transition-all"
                       value={timezone}
                       onChange={(e) => { setTimezone(e.target.value); db.saveSettings(userId, { timezone: e.target.value }); }}
                     >
@@ -848,10 +859,10 @@ function AppContent() {
               {/* ── Morning Digest section ─────────────────────────────────── */}
                <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <div className="flex items-center gap-4 mb-10">
-                  <div className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl"><Mail size={28} /></div>
+                  <div className="p-4 rounded-2xl" style={{ background: 'rgba(17,204,245,0.1)', color: '#30003b' }}><Mail size={28} /></div>
                   <div>
                     <h3 className="text-2xl font-black text-slate-900">Morning Digest Subscription</h3>
-                    <p className="text-slate-500 font-medium text-sm">Automated background scanning & email notifications.</p>
+                    <p className="text-slate-500 font-medium text-sm">Automated background scanning &amp; email notifications.</p>
                   </div>
                 </div>
                 
@@ -868,7 +879,7 @@ function AppContent() {
                         checked={automationEnabled}
                         onChange={(e) => { setAutomationEnabled(e.target.checked); db.saveSettings(userId, { automationEnabled: e.target.checked }); }}
                       />
-                      <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
+                      <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#30003b]" style={{ '--tw-ring-color': 'rgba(17,204,245,0.3)' } as React.CSSProperties}></div>
                     </label>
                   </div>
 
@@ -879,7 +890,7 @@ function AppContent() {
                     </div>
                     <input
                       type="range"
-                      className="w-32 accent-indigo-600"
+                      className="w-32 accent-[#30003b]"
                       min={0}
                       max={100}
                       step={5}
@@ -895,7 +906,7 @@ function AppContent() {
                     </div>
                     <input
                       type="email"
-                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all"
+                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
                       placeholder="your@email.com"
                       value={digestEmail}
                       onChange={(e) => setDigestEmail(e.target.value)}
@@ -910,18 +921,21 @@ function AppContent() {
                     </div>
                   )}
 
-                  <div className="p-8 bg-indigo-900 text-white rounded-[2.5rem] shadow-2xl shadow-indigo-200 relative overflow-hidden">
+                  <div className="p-8 text-white rounded-[2.5rem] shadow-2xl relative overflow-hidden" style={{ background: '#30003b' }}>
                     <div className="relative z-10">
                       <h4 className="text-xl font-black mb-2 flex items-center gap-2">
                         <Mail size={20} /> Send Digest Now
                       </h4>
-                      <p className="text-indigo-200 text-sm mb-6 leading-relaxed">
+                      <p className="text-sm mb-6 leading-relaxed" style={{ color: 'rgba(17,204,245,0.8)' }}>
                         Send a test digest email with your current matches above the threshold. Uses Resend via Supabase Edge Functions.
                       </p>
                       <button
                         onClick={handleSendDigest}
                         disabled={digestSending}
-                        className="bg-white text-indigo-900 px-8 py-3 rounded-2xl font-black text-sm hover:bg-indigo-50 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                        className="bg-white px-8 py-3 rounded-2xl font-black text-sm transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                        style={{ color: '#30003b' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(17,204,245,0.15)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'white')}
                       >
                         {digestSending ? <><Loader2 size={16} className="animate-spin" /> Sending...</> : 'Send Test Digest'}
                       </button>
@@ -931,7 +945,7 @@ function AppContent() {
                         </p>
                       )}
                     </div>
-                    <div className="absolute right-[-10%] top-[-20%] w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl" />
+                    <div className="absolute right-[-10%] top-[-20%] w-64 h-64 rounded-full blur-3xl" style={{ background: 'rgba(17,204,245,0.1)' }} />
                   </div>
 
                   <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
@@ -955,7 +969,7 @@ function AppContent() {
                   <p className="text-slate-500 font-medium">Your curated high-probability opportunities.</p>
                 </div>
                 {shortlistedJobs.length > 0 && (
-                  <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-black uppercase tracking-widest border border-indigo-100">
+                  <div className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest" style={{ background: 'rgba(48,0,59,0.06)', color: '#30003b', border: '1px solid rgba(48,0,59,0.1)' }}>
                     {shortlistedJobs.length} Saved Matches
                   </div>
                 )}
@@ -963,14 +977,14 @@ function AppContent() {
 
               {shortlistedJobs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-40">
-                  <div className="p-8 bg-indigo-50 text-indigo-200 rounded-full mb-8">
+                  <div className="p-8 rounded-full mb-8" style={{ background: 'rgba(48,0,59,0.06)', color: 'rgba(48,0,59,0.2)' }}>
                     <BookmarkCheck size={64} strokeWidth={1} />
                   </div>
                   <h3 className="text-2xl font-black text-slate-900 mb-2">Shortlist is Empty</h3>
                   <p className="text-slate-500 text-center max-w-sm font-medium">
                     Start scanning and "Accept" jobs to save them here for active applications.
                   </p>
-                  <button className="mt-8 text-indigo-600 font-bold text-sm hover:underline" onClick={() => setView('scanner')}>
+                  <button className="mt-8 font-bold text-sm hover:underline" style={{ color: '#30003b' }} onClick={() => setView('scanner')}>
                     Go to live scanner
                   </button>
                 </div>
@@ -1102,7 +1116,7 @@ function AppContent() {
       <footer className="mt-16 mb-8 ml-auto mr-auto max-w-3xl px-8 text-center text-xs text-slate-400 leading-relaxed">
         <div className="border-t border-slate-100 pt-6 space-y-1">
           <p>
-            <button onClick={() => setView('legal')} className="text-slate-500 hover:text-indigo-600 font-bold underline underline-offset-2 transition-colors">Impressum &amp; Datenschutz</button>
+            <button onClick={() => setView('legal')} className="text-slate-500 font-bold underline underline-offset-2 transition-colors" onMouseEnter={e => (e.currentTarget.style.color='#30003b')} onMouseLeave={e => (e.currentTarget.style.color='')}>Impressum &amp; Datenschutz</button>
           </p>
           <p>Maria Alejandra Diaz Linde &middot; Stuttgart, Germany</p>
         </div>
@@ -1110,14 +1124,14 @@ function AppContent() {
 
       {/* Loading Overlay */}
       {isLoading && view !== 'scanner' && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 text-center animate-in fade-in duration-300">
-          <div className="bg-white p-12 rounded-[3.5rem] shadow-[0_0_100px_rgba(79,70,229,0.3)] flex flex-col items-center max-w-md relative overflow-hidden">
+        <div className="fixed inset-0 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-8 text-center animate-in fade-in duration-300" style={{ background: 'rgba(48,0,59,0.75)' }}>
+          <div className="bg-white p-12 rounded-[3.5rem] shadow-[0_0_100px_rgba(17,204,245,0.15)] flex flex-col items-center max-w-md relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-1 bg-slate-100 overflow-hidden">
-              <div className="h-full bg-indigo-600 animate-progress w-full" />
+              <div className="h-full animate-progress w-full" style={{ background: '#11ccf5' }} />
             </div>
-            <div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mb-8 relative">
-              <Loader2 size={40} className="animate-spin text-indigo-600" />
-              <div className="absolute inset-0 border-4 border-indigo-100 rounded-[2rem]" />
+            <div className="w-20 h-20 rounded-[2rem] flex items-center justify-center mb-8 relative" style={{ background: 'rgba(17,204,245,0.08)' }}>
+              <Loader2 size={40} className="animate-spin" style={{ color: '#30003b' }} />
+              <div className="absolute inset-0 border-4 rounded-[2rem]" style={{ borderColor: 'rgba(17,204,245,0.2)' }} />
             </div>
             <h3 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">{loadingText}</h3>
             <p className="text-slate-500 font-medium leading-relaxed">
@@ -1135,9 +1149,9 @@ function AuthenticatedApp() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 size={40} className="animate-spin text-indigo-600" />
+          <Loader2 size={40} className="animate-spin" style={{ color: '#30003b' }} />
           <p className="text-slate-500 font-medium">Loading your dashboard...</p>
         </div>
       </div>
@@ -1165,18 +1179,18 @@ function NavItem({ icon, label, active, onClick, expanded, disabled, badge }: { 
       disabled={disabled}
       className={`
         w-full flex items-center gap-3 p-4 rounded-2xl transition-all duration-300 relative group
-        ${active ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}
+        ${active ? 'text-[#11ccf5] shadow-none' : 'text-white/60 hover:bg-white/10 hover:text-white'}
         ${disabled ? 'opacity-20 cursor-not-allowed filter grayscale' : 'cursor-pointer'}
       `}
     >
       <div className={`transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110 group-hover:rotate-6'}`}>{icon}</div>
       {expanded && <span className="font-bold text-sm whitespace-nowrap tracking-tight">{label}</span>}
       {badge !== undefined && expanded && (
-        <span className={`ml-auto px-2 py-0.5 rounded-lg text-[10px] font-black ${active ? 'bg-white text-indigo-600' : 'bg-indigo-100 text-indigo-700'}`}>
+        <span className={`ml-auto px-2 py-0.5 rounded-lg text-[10px] font-black ${active ? 'bg-[#11ccf5]/20 text-[#11ccf5]' : 'bg-white/20 text-white/80'}`}>
           {badge}
         </span>
       )}
-      {active && <div className="absolute left-[-1rem] top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />}
+      {active && <div className="absolute left-[-1rem] top-1/2 -translate-y-1/2 w-1 h-6 bg-[#11ccf5] rounded-r-full" />}
     </button>
   );
 }
@@ -1203,7 +1217,7 @@ function JobCard({
   };
 
   return (
-    <div className={`bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40 transition-all duration-500 overflow-hidden hover:shadow-2xl hover:shadow-indigo-100/30 ${expanded ? 'scale-[1.02] border-indigo-200' : ''}`}>
+    <div className={`bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40 transition-all duration-500 overflow-hidden hover:shadow-2xl ${expanded ? 'scale-[1.02] border-[#30003b]/20' : ''}`}>
       <div className="p-8 flex items-start justify-between">
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-4 mb-4">
@@ -1221,13 +1235,13 @@ function JobCard({
               </div>
             )}
             {isShortlisted && (
-              <div className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100">
+              <div className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest" style={{ background: 'rgba(48,0,59,0.06)', color: '#30003b', border: '1px solid rgba(48,0,59,0.1)' }}>
                 Shortlisted
               </div>
             )}
           </div>
           <div className="flex items-center gap-4 text-sm font-bold">
-            <p className="text-indigo-600 uppercase tracking-widest">{match.company}</p>
+            <p className="uppercase tracking-widest" style={{ color: '#30003b' }}>{match.company}</p>
             <div className="w-1 h-1 bg-slate-200 rounded-full" />
             <p className="text-slate-400">{match.location}</p>
           </div>
@@ -1259,7 +1273,10 @@ function JobCard({
             {onAccept && (
               <button 
                 onClick={(e) => { e.stopPropagation(); onAccept(); }}
-                className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2"
+                className="px-6 py-2.5 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"
+                style={{ background: '#30003b' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#1a0024')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#30003b')}
               >
                 <BookmarkCheck size={14} />
                 Save Match
@@ -1287,7 +1304,8 @@ function JobCard({
         
         <button 
           onClick={() => setExpanded(!expanded)}
-          className={`p-4 rounded-2xl transition-all duration-300 ${expanded ? 'bg-indigo-600 text-white rotate-180' : 'bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-indigo-600'}`}
+          className={`p-4 rounded-2xl transition-all duration-300 ${expanded ? 'text-white rotate-180' : 'bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-[#30003b]'}`}
+          style={expanded ? { background: '#30003b' } : {}}
         >
           <ChevronDown size={24} />
         </button>

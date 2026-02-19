@@ -236,12 +236,12 @@ async function sendDigestForUser(
           <div style="font-weight:700; color:#0f172a; font-size:15px;">${escapeHtml(m.title)}</div>
           <div style="color:#64748b; font-size:13px; margin-top:2px;">${escapeHtml(m.company)} · ${escapeHtml(m.location || 'N/A')}</div>
           <div style="margin-top:4px;">
-            <span style="display:inline-block; background:#eef2ff; color:#4f46e5; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:700;">${m.score}% match</span>
+            <span style="display:inline-block; background:rgba(48,0,59,0.08); color:#30003b; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:700;">${m.score}% match</span>
             ${m.source ? `<span style="display:inline-block; background:#f0fdf4; color:#16a34a; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:600; margin-left:4px;">${escapeHtml(m.source)}</span>` : ''}
           </div>
         </td>
         <td style="padding:12px 16px; border-bottom:1px solid #f1f5f9; text-align:right; vertical-align:middle;">
-          <a href="${escapeHtml(m.link || '#')}" style="display:inline-block; background:#4f46e5; color:white; padding:8px 16px; border-radius:12px; font-size:13px; font-weight:700; text-decoration:none;">View</a>
+          <a href="${escapeHtml(m.link || '#')}" style="display:inline-block; background:#30003b; color:white; padding:8px 16px; border-radius:12px; font-size:13px; font-weight:700; text-decoration:none;">View</a>
         </td>
       </tr>`,
     )
@@ -254,7 +254,7 @@ async function sendDigestForUser(
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f8fafc; margin:0; padding:32px 16px;">
   <div style="max-width:600px; margin:0 auto; background:white; border-radius:24px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.06);">
-    <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed); padding:32px 28px; text-align:center;">
+    <div style="background:linear-gradient(135deg,#30003b,#1a0024); padding:32px 28px; text-align:center;">
       <h1 style="color:white; margin:0; font-size:22px; font-weight:800;">${greeting}</h1>
       <p style="color:rgba(255,255,255,0.9); margin:8px 0 0; font-size:16px; font-weight:600;">Your Daily Job Digest</p>
       <p style="color:rgba(255,255,255,0.8); margin:6px 0 0; font-size:14px;">${matches.length} match${matches.length > 1 ? 'es' : ''} scoring ${effectiveThreshold}%+</p>
@@ -265,7 +265,7 @@ async function sendDigestForUser(
       </table>
     </div>
     <div style="padding:20px 28px; text-align:center; border-top:1px solid #f1f5f9;">
-      <p style="color:#94a3b8; font-size:12px; margin:0;">Sent by JobScout AI · <a href="#" style="color:#4f46e5; text-decoration:none;">Manage preferences</a></p>
+      <p style="color:#94a3b8; font-size:12px; margin:0;">Sent by MyCareerBrain · <a href="#" style="color:#30003b; text-decoration:none;">Manage preferences</a></p>
     </div>
   </div>
 </body>
