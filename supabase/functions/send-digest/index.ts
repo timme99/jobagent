@@ -1,9 +1,11 @@
 // supabase/functions/send-digest/index.ts
 // Supabase Edge Function: sends a job digest email via Resend.
 //
-// Can be invoked:
-//   1. From the frontend ("Send Test Digest" button)
-//   2. Via a Supabase cron/pg_cron scheduled job for daily automation
+// Invocation modes:
+//   1. User JWT (frontend "Send Test Digest" button)
+//   2. Service role key + user_id body  → targets a specific user
+//   3. Service role key, no user_id     → pg_cron broadcast to all automation-enabled users
+//   4. Any of the above + {"check":true} → diagnostic mode, returns summary without sending
 //
 // Required Supabase secrets:
 //   RESEND_API_KEY  – your Resend API key
@@ -17,140 +19,210 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function jsonRes(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 serve(async (req: Request) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
     const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'JobScout AI <onboarding@resend.dev>';
 
     if (!RESEND_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: 'RESEND_API_KEY not configured. Set it via: supabase secrets set RESEND_API_KEY=re_...' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonRes(500, {
+        error: 'RESEND_API_KEY not configured. Set it via: supabase secrets set RESEND_API_KEY=re_...',
+      });
     }
 
-    // Authenticate the calling user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing Authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonRes(401, { error: 'Missing Authorization header' });
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    // Always use the service-role client for DB queries so RLS is bypassed
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Parse optional body params
     const body = await req.json().catch(() => ({}));
-    const threshold = body.threshold ?? 80;
-
-    // Decode the JWT to get user_id.
-    // If the caller passes a service_role key (e.g. cron or Dashboard test)
-    // and includes a user_id in the body, use that instead.
-    let userId: string;
-    let userEmail: string | undefined;
+    const isDiagnostic = body.check === true;
 
     const token = authHeader.replace('Bearer ', '');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+    // ── Service-role path (cron job or dashboard test) ───────────────────────
     if (token === serviceRoleKey) {
-      // Called with service role key (cron job or Dashboard test)
       if (!body.user_id) {
-        return new Response(
-          JSON.stringify({ error: 'When using service_role key, provide user_id in the request body' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        // pg_cron broadcast mode: send digests to ALL automation-enabled users
+        console.log('Function started by: service_role (cron broadcast)');
+        const results = await processAllUsers(supabase, RESEND_API_KEY, RESEND_FROM, isDiagnostic);
+        return jsonRes(200, { processed: results.length, results });
       }
-      userId = body.user_id;
-      userEmail = body.email;
-    } else {
-      // Called with a user JWT (frontend)
-      const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
-      if (userError || !user) {
-        return new Response(
-          JSON.stringify({ error: 'Unauthorized' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      userId = user.id;
-      userEmail = user.email;
+
+      // Service role with an explicit user_id (dashboard test for specific user)
+      console.log(`Function started by: ${body.user_id}`);
+      const result = await sendDigestForUser(
+        supabase, body.user_id, body.email, body, RESEND_API_KEY, RESEND_FROM, isDiagnostic,
+      );
+      return jsonRes(result.status, result.data);
     }
 
-    // Load user settings
-    const { data: settings } = await supabase
+    // ── User JWT path (frontend) ─────────────────────────────────────────────
+    const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+    if (userError || !user) {
+      return jsonRes(401, { error: 'Unauthorized' });
+    }
+
+    console.log(`Function started by: ${user.id}`);
+    const result = await sendDigestForUser(
+      supabase, user.id, user.email, body, RESEND_API_KEY, RESEND_FROM, isDiagnostic,
+    );
+    return jsonRes(result.status, result.data);
+
+  } catch (err: any) {
+    return jsonRes(500, { error: err.message || 'Internal server error' });
+  }
+});
+
+// ── Broadcast: iterate every automation-enabled user ────────────────────────
+async function processAllUsers(
+  supabase: ReturnType<typeof createClient>,
+  resendApiKey: string,
+  resendFrom: string,
+  isDiagnostic: boolean,
+) {
+  const { data: allSettings } = await supabase
+    .from('user_settings')
+    .select('user_id, digest_email, match_threshold, last_digest_sent_at')
+    .eq('automation_enabled', true)
+    .not('digest_email', 'is', null);
+
+  const results: Record<string, unknown>[] = [];
+  for (const s of allSettings ?? []) {
+    console.log(`Function started by: ${s.user_id}`);
+    const result = await sendDigestForUser(
+      supabase, s.user_id, s.digest_email, {}, resendApiKey, resendFrom, isDiagnostic, s,
+    );
+    results.push({
+      userId: s.user_id,
+      status: result.status,
+      ...(result.data as Record<string, unknown>),
+    });
+  }
+  return results;
+}
+
+// ── Core digest logic for a single user ─────────────────────────────────────
+async function sendDigestForUser(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  userEmail: string | undefined,
+  body: Record<string, any>,
+  resendApiKey: string,
+  resendFrom: string,
+  isDiagnostic: boolean,
+  preloadedSettings?: Record<string, any>,
+): Promise<{ status: number; data: unknown }> {
+
+  // Load settings (re-use the row already fetched in broadcast mode)
+  let settings = preloadedSettings;
+  if (!settings) {
+    const { data } = await supabase
       .from('user_settings')
-      .select('*')
+      .select('digest_email, match_threshold, last_digest_sent_at')
       .eq('user_id', userId)
       .single();
+    settings = data ?? {};
+  }
 
-    const recipientEmail = body.email || settings?.digest_email || userEmail;
-    if (!recipientEmail) {
-      return new Response(
-        JSON.stringify({ error: 'No digest email configured' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+  const recipientEmail: string = body.email || settings.digest_email || userEmail;
+  if (!recipientEmail) {
+    return { status: 400, data: { error: 'No digest email configured' } };
+  }
 
-    const effectiveThreshold = body.threshold ?? settings?.match_threshold ?? threshold;
+  const effectiveThreshold: number = body.threshold ?? settings.match_threshold ?? 80;
 
-    // Load recent job matches above the threshold
-    const { data: matches, error: matchError } = await supabase
-      .from('job_matches')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('score', effectiveThreshold)
-      .neq('status', 'dismissed')
-      .order('score', { ascending: false })
-      .limit(20);
+  // Determine the time window.
+  // If last_digest_sent_at is empty (new user / first run), fall back to the last 24 hours
+  // so the very first email always has something to send.
+  const lastSent: string | null = settings.last_digest_sent_at ?? null;
+  const since = lastSent
+    ? new Date(lastSent).toISOString()
+    : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    if (matchError) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to load matches', details: matchError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+  // Fetch matches inside the time window
+  const { data: matches, error: matchError } = await supabase
+    .from('job_matches')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('score', effectiveThreshold)
+    .neq('status', 'dismissed')
+    .gte('created_at', since)
+    .order('score', { ascending: false })
+    .limit(20);
 
-    if (!matches || matches.length === 0) {
-      return new Response(
-        JSON.stringify({ message: 'No matches above threshold — no email sent', threshold: effectiveThreshold }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+  if (matchError) {
+    return { status: 500, data: { error: 'Failed to load matches', details: matchError.message } };
+  }
 
-    // Build the email HTML
-    const jobRows = matches
-      .map(
-        (m: any) => `
-        <tr>
-          <td style="padding:12px 16px; border-bottom:1px solid #f1f5f9;">
-            <div style="font-weight:700; color:#0f172a; font-size:15px;">${escapeHtml(m.title)}</div>
-            <div style="color:#64748b; font-size:13px; margin-top:2px;">${escapeHtml(m.company)} · ${escapeHtml(m.location || 'N/A')}</div>
-            <div style="margin-top:4px;">
-              <span style="display:inline-block; background:#eef2ff; color:#4f46e5; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:700;">${m.score}% match</span>
-              ${m.source ? `<span style="display:inline-block; background:#f0fdf4; color:#16a34a; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:600; margin-left:4px;">${escapeHtml(m.source)}</span>` : ''}
-            </div>
-          </td>
-          <td style="padding:12px 16px; border-bottom:1px solid #f1f5f9; text-align:right; vertical-align:middle;">
-            <a href="${escapeHtml(m.link || '#')}" style="display:inline-block; background:#4f46e5; color:white; padding:8px 16px; border-radius:12px; font-size:13px; font-weight:700; text-decoration:none;">View</a>
-          </td>
-        </tr>`
-      )
-      .join('');
+  console.log(`Jobs found in last 24h: ${matches?.length ?? 0}`);
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+  if (!matches || matches.length === 0) {
+    return {
+      status: 200,
+      data: { message: 'No matches above threshold — no email sent', threshold: effectiveThreshold },
+    };
+  }
+
+  // ── Diagnostic mode: summarise without sending ──────────────────────────
+  if (isDiagnostic) {
+    return {
+      status: 200,
+      data: {
+        diagnostic: true,
+        wouldSendTo: recipientEmail,
+        matchCount: matches.length,
+        threshold: effectiveThreshold,
+        since,
+        matches: matches.map((m: any) => ({
+          id: m.id,
+          title: m.title,
+          company: m.company,
+          score: m.score,
+        })),
+      },
+    };
+  }
+
+  // ── Build email HTML ─────────────────────────────────────────────────────
+  const jobRows = matches
+    .map(
+      (m: any) => `
+      <tr>
+        <td style="padding:12px 16px; border-bottom:1px solid #f1f5f9;">
+          <div style="font-weight:700; color:#0f172a; font-size:15px;">${escapeHtml(m.title)}</div>
+          <div style="color:#64748b; font-size:13px; margin-top:2px;">${escapeHtml(m.company)} · ${escapeHtml(m.location || 'N/A')}</div>
+          <div style="margin-top:4px;">
+            <span style="display:inline-block; background:#eef2ff; color:#4f46e5; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:700;">${m.score}% match</span>
+            ${m.source ? `<span style="display:inline-block; background:#f0fdf4; color:#16a34a; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:600; margin-left:4px;">${escapeHtml(m.source)}</span>` : ''}
+          </div>
+        </td>
+        <td style="padding:12px 16px; border-bottom:1px solid #f1f5f9; text-align:right; vertical-align:middle;">
+          <a href="${escapeHtml(m.link || '#')}" style="display:inline-block; background:#4f46e5; color:white; padding:8px 16px; border-radius:12px; font-size:13px; font-weight:700; text-decoration:none;">View</a>
+        </td>
+      </tr>`,
+    )
+    .join('');
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f8fafc; margin:0; padding:32px 16px;">
   <div style="max-width:600px; margin:0 auto; background:white; border-radius:24px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.06);">
     <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed); padding:32px 28px; text-align:center;">
@@ -169,50 +241,48 @@ serve(async (req: Request) => {
 </body>
 </html>`;
 
-    // Send via Resend API
-    const resendRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: RESEND_FROM,
-        to: [recipientEmail],
-        subject: `JobScout Digest: ${matches.length} new match${matches.length > 1 ? 'es' : ''} (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`,
-        html,
-      }),
-    });
+  // ── Send via Resend ──────────────────────────────────────────────────────
+  const resendRes = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: resendFrom,
+      to: [recipientEmail],
+      subject: `JobScout Digest: ${matches.length} new match${matches.length > 1 ? 'es' : ''} (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`,
+      html,
+    }),
+  });
 
-    const resendData = await resendRes.json();
+  const resendData = await resendRes.json();
+  console.log(`Resend API Status: ${JSON.stringify(resendData)}`);
 
-    if (!resendRes.ok) {
-      return new Response(
-        JSON.stringify({ error: 'Resend API error', details: resendData }),
-        { status: resendRes.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        emailId: resendData.id,
-        sentTo: recipientEmail,
-        matchCount: matches.length,
-        threshold: effectiveThreshold,
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (err: any) {
-    return new Response(
-      JSON.stringify({ error: err.message || 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+  if (!resendRes.ok) {
+    return { status: resendRes.status, data: { error: 'Resend API error', details: resendData } };
   }
-});
+
+  // Stamp the send time so the next run only picks up matches created after this point
+  await supabase
+    .from('user_settings')
+    .update({ last_digest_sent_at: new Date().toISOString() })
+    .eq('user_id', userId);
+
+  return {
+    status: 200,
+    data: {
+      success: true,
+      emailId: resendData.id,
+      sentTo: recipientEmail,
+      matchCount: matches.length,
+      threshold: effectiveThreshold,
+    },
+  };
+}
 
 function escapeHtml(str: string): string {
-  return str
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
