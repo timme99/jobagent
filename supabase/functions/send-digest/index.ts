@@ -100,12 +100,38 @@ async function processAllUsers(
 ) {
   const { data: allSettings } = await supabase
     .from('user_settings')
-    .select('user_id, digest_email, match_threshold, last_digest_sent_at')
+    .select('user_id, digest_email, match_threshold, last_digest_sent_at, timezone, display_name')
     .eq('automation_enabled', true)
     .not('digest_email', 'is', null);
 
+  const now = new Date();
   const results: Record<string, unknown>[] = [];
+
   for (const s of allSettings ?? []) {
+    const tz = s.timezone || 'UTC';
+
+    // Only send if it is currently 8:00 AM in the user's local timezone
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(now);
+    const currentHour = parseInt(
+      (parts.find((p: Intl.DateTimeFormatPart) => p.type === 'hour') ?? { value: '0' }).value,
+      10,
+    );
+
+    if (currentHour !== 8) {
+      console.log(`Skipping user ${s.user_id}: hour in ${tz} is ${currentHour}, not 8`);
+      results.push({
+        userId: s.user_id,
+        status: 200,
+        skipped: true,
+        reason: `Not 8 AM in ${tz} (currently ${currentHour}:xx)`,
+      });
+      continue;
+    }
+
     console.log(`Function started by: ${s.user_id}`);
     const result = await sendDigestForUser(
       supabase, s.user_id, s.digest_email, {}, resendApiKey, resendFrom, isDiagnostic, s,
@@ -136,7 +162,7 @@ async function sendDigestForUser(
   if (!settings) {
     const { data } = await supabase
       .from('user_settings')
-      .select('digest_email, match_threshold, last_digest_sent_at')
+      .select('digest_email, match_threshold, last_digest_sent_at, display_name')
       .eq('user_id', userId)
       .single();
     settings = data ?? {};
@@ -221,13 +247,17 @@ async function sendDigestForUser(
     )
     .join('');
 
+  const displayName: string = settings.display_name || '';
+  const greeting = displayName ? `Good morning, ${escapeHtml(displayName)}!` : 'Good morning!';
+
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f8fafc; margin:0; padding:32px 16px;">
   <div style="max-width:600px; margin:0 auto; background:white; border-radius:24px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.06);">
     <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed); padding:32px 28px; text-align:center;">
-      <h1 style="color:white; margin:0; font-size:22px; font-weight:800;">Your Daily Job Digest</h1>
-      <p style="color:rgba(255,255,255,0.8); margin:8px 0 0; font-size:14px;">${matches.length} match${matches.length > 1 ? 'es' : ''} scoring ${effectiveThreshold}%+</p>
+      <h1 style="color:white; margin:0; font-size:22px; font-weight:800;">${greeting}</h1>
+      <p style="color:rgba(255,255,255,0.9); margin:8px 0 0; font-size:16px; font-weight:600;">Your Daily Job Digest</p>
+      <p style="color:rgba(255,255,255,0.8); margin:6px 0 0; font-size:14px;">${matches.length} match${matches.length > 1 ? 'es' : ''} scoring ${effectiveThreshold}%+</p>
     </div>
     <div style="padding:8px 0;">
       <table style="width:100%; border-collapse:collapse;">
@@ -251,7 +281,7 @@ async function sendDigestForUser(
     body: JSON.stringify({
       from: resendFrom,
       to: [recipientEmail],
-      subject: `JobScout Digest: ${matches.length} new match${matches.length > 1 ? 'es' : ''} (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`,
+      subject: `${displayName ? `Good morning, ${displayName}! ` : ''}JobScout Digest: ${matches.length} new match${matches.length > 1 ? 'es' : ''} (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`,
       html,
     }),
   });

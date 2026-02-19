@@ -27,7 +27,9 @@ import {
   Info,
   PlusCircle,
   RefreshCw,
-  LogOut
+  LogOut,
+  Coffee,
+  Dog,
 } from 'lucide-react';
 import { MasterProfile, SearchStrategy, JobMatch, AppView } from './types';
 import { synthesizeProfile, refineStrategy, scoreJobMatch, fetchLiveJobs } from './geminiService';
@@ -77,6 +79,44 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
+// ── Avatar options & timezone list ────────────────────────────────────
+const AVATAR_OPTIONS = [
+  { id: 'User',      label: 'Default',   icon: <User size={18} /> },
+  { id: 'Coffee',    label: 'Coffee',    icon: <Coffee size={18} /> },
+  { id: 'Sparkles',  label: 'Sparkles',  icon: <Sparkles size={18} /> },
+  { id: 'Dog',       label: 'Dog',       icon: <Dog size={18} /> },
+  { id: 'Briefcase', label: 'Briefcase', icon: <Briefcase size={18} /> },
+];
+
+function getAvatarIcon(id: string, size = 20): React.ReactNode {
+  switch (id) {
+    case 'Coffee':    return <Coffee size={size} />;
+    case 'Sparkles':  return <Sparkles size={size} />;
+    case 'Dog':       return <Dog size={size} />;
+    case 'Briefcase': return <Briefcase size={size} />;
+    default:          return <User size={size} />;
+  }
+}
+
+const COMMON_TIMEZONES = [
+  { label: 'UTC',                                   value: 'UTC' },
+  { label: 'London (GMT/BST)',                      value: 'Europe/London' },
+  { label: 'Berlin / Paris / Rome (CET/CEST)',      value: 'Europe/Berlin' },
+  { label: 'Helsinki / Kyiv (EET/EEST)',            value: 'Europe/Helsinki' },
+  { label: 'Moscow (MSK)',                          value: 'Europe/Moscow' },
+  { label: 'Dubai (GST)',                           value: 'Asia/Dubai' },
+  { label: 'India (IST)',                           value: 'Asia/Kolkata' },
+  { label: 'Singapore / Hong Kong (SGT/HKT)',       value: 'Asia/Singapore' },
+  { label: 'Tokyo (JST)',                           value: 'Asia/Tokyo' },
+  { label: 'Sydney (AEST/AEDT)',                    value: 'Australia/Sydney' },
+  { label: 'New York / Toronto (ET)',               value: 'America/New_York' },
+  { label: 'Chicago / Dallas (CT)',                 value: 'America/Chicago' },
+  { label: 'Denver (MT)',                           value: 'America/Denver' },
+  { label: 'Los Angeles / Vancouver (PT)',          value: 'America/Los_Angeles' },
+  { label: 'Buenos Aires (ART)',                    value: 'America/Argentina/Buenos_Aires' },
+  { label: 'São Paulo (BRT)',                       value: 'America/Sao_Paulo' },
+];
+
 function AppContent() {
   const { user, signOut } = useAuth();
   const userId = user!.id;
@@ -96,6 +136,11 @@ function AppContent() {
   const [automationEnabled, setAutomationEnabled] = useState(true);
   const [matchThreshold, setMatchThreshold] = useState(80);
   const [digestEmail, setDigestEmail] = useState(userEmail);
+
+  // Profile / identity state
+  const [displayName, setDisplayName] = useState('');
+  const [avatarIcon, setAvatarIcon] = useState('User');
+  const [timezone, setTimezone] = useState('UTC');
 
   // Digest email state
   const [digestSending, setDigestSending] = useState(false);
@@ -133,6 +178,15 @@ function AppContent() {
         setScanKeywords(settingsData.scanKeywords);
         setScanLocation(settingsData.scanLocation || 'Remote');
         setDigestEmail(settingsData.digestEmail || userEmail);
+        setDisplayName(settingsData.displayName);
+        setAvatarIcon(settingsData.avatarIcon || 'User');
+        // Use saved timezone; auto-detect and save if this is the first time
+        const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const savedTz = settingsData.timezone;
+        setTimezone(savedTz || detectedTz);
+        if (!savedTz) {
+          db.saveSettings(userId, { timezone: detectedTz });
+        }
       } catch (e) {
         console.error('Failed to load data from Supabase:', e);
       } finally {
@@ -373,6 +427,17 @@ function AppContent() {
         </nav>
 
         <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-2">
+          {/* User identity chip */}
+          <div className={`flex items-center gap-3 px-2 py-1.5 rounded-2xl ${isSidebarOpen ? '' : 'justify-center'}`}>
+            <div className="w-8 h-8 bg-violet-600 text-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+              {getAvatarIcon(avatarIcon, 16)}
+            </div>
+            {isSidebarOpen && (
+              <p className="text-xs font-bold text-slate-700 truncate flex-1 leading-tight">
+                {displayName || userEmail}
+              </p>
+            )}
+          </div>
           <button
             onClick={signOut}
             className="w-full flex items-center justify-center gap-2 p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600 transition-all shadow-sm border border-transparent hover:border-red-200"
@@ -398,11 +463,11 @@ function AppContent() {
           </div>
           <div className="flex items-center gap-4">
              <div className="hidden md:flex flex-col items-end mr-2">
-                <p className="text-xs font-bold text-slate-800 truncate max-w-[200px]">{userEmail}</p>
+                <p className="text-xs font-bold text-slate-800 truncate max-w-[200px]">{displayName || userEmail}</p>
                 <p className="text-[10px] text-green-500 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> Live Engine Active</p>
              </div>
-             <div className="w-10 h-10 rounded-2xl border-2 border-white bg-white shadow-md flex items-center justify-center overflow-hidden transition-transform hover:scale-105 cursor-pointer">
-                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Avatar" />
+             <div className="w-10 h-10 rounded-2xl border-2 border-white bg-violet-600 text-white shadow-md flex items-center justify-center transition-transform hover:scale-105 cursor-pointer" onClick={() => setView('automation')}>
+                {getAvatarIcon(avatarIcon, 20)}
              </div>
           </div>
         </header>
@@ -707,6 +772,80 @@ function AppContent() {
 
           {view === 'automation' && (
             <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
+
+              {/* ── Profile / Identity section ─────────────────────────────── */}
+              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+                <div className="flex items-center gap-4 mb-10">
+                  <div className="p-4 bg-violet-50 text-violet-600 rounded-2xl">
+                    {getAvatarIcon(avatarIcon, 28)}
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900">Your Identity</h3>
+                    <p className="text-slate-500 font-medium text-sm">How Scout AI addresses you in digest emails.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Display name */}
+                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div className="flex-1 mr-4">
+                      <h4 className="font-bold text-slate-900">Display Name</h4>
+                      <p className="text-xs text-slate-500">Used as the greeting in your morning digest email.</p>
+                    </div>
+                    <input
+                      type="text"
+                      className="w-48 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-violet-100 focus:border-violet-400 outline-none transition-all"
+                      placeholder="Your name"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      onBlur={() => db.saveSettings(userId, { displayName })}
+                    />
+                  </div>
+
+                  {/* Avatar picker */}
+                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div>
+                      <h4 className="font-bold text-slate-900">Avatar Icon</h4>
+                      <p className="text-xs text-slate-500">Shown in the sidebar and header.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {AVATAR_OPTIONS.map(opt => (
+                        <button
+                          key={opt.id}
+                          title={opt.label}
+                          onClick={() => { setAvatarIcon(opt.id); db.saveSettings(userId, { avatarIcon: opt.id }); }}
+                          className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+                            avatarIcon === opt.id
+                              ? 'bg-violet-600 text-white shadow-lg shadow-violet-200 scale-110'
+                              : 'bg-white border border-slate-200 text-slate-500 hover:border-violet-300 hover:text-violet-600'
+                          }`}
+                        >
+                          {opt.icon}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Timezone */}
+                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div>
+                      <h4 className="font-bold text-slate-900">Timezone</h4>
+                      <p className="text-xs text-slate-500">Auto-detected · controls your 8:00 AM digest delivery.</p>
+                    </div>
+                    <select
+                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-violet-100 focus:border-violet-400 outline-none cursor-pointer transition-all"
+                      value={timezone}
+                      onChange={(e) => { setTimezone(e.target.value); db.saveSettings(userId, { timezone: e.target.value }); }}
+                    >
+                      {COMMON_TIMEZONES.map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── Morning Digest section ─────────────────────────────────── */}
                <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <div className="flex items-center gap-4 mb-10">
                   <div className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl"><Mail size={28} /></div>
@@ -720,7 +859,7 @@ function AppContent() {
                   <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
                     <div>
                       <h4 className="font-bold text-slate-900">Enable Daily Scan</h4>
-                      <p className="text-xs text-slate-500">Scout will run every morning at 7:00 AM UTC.</p>
+                      <p className="text-xs text-slate-500">Scout will run every morning at 8:00 AM in your timezone.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input
@@ -767,7 +906,7 @@ function AppContent() {
                   {automationEnabled && (
                     <div className="flex items-center gap-2 p-4 bg-green-50 rounded-2xl border border-green-100 text-green-800 text-xs font-bold">
                       <CheckCircle2 size={14} className="flex-shrink-0" />
-                      <p>Next automated scan: <strong>7:00 AM UTC tomorrow</strong>. Matches above {matchThreshold}% will be emailed to {digestEmail || 'your email'}.</p>
+                      <p>Next automated scan: <strong>8:00 AM {timezone}</strong>. Matches above {matchThreshold}% will be emailed to {digestEmail || 'your email'}.</p>
                     </div>
                   )}
 
