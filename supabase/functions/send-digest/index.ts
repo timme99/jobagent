@@ -74,7 +74,7 @@ serve(async (req: Request) => {
 
   try {
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'MyCareerBrain <onboarding@resend.dev>';
+    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
 
     if (!RESEND_API_KEY) {
       return jsonRes(500, {
@@ -436,16 +436,16 @@ async function sendDigestForUser(
 // ── Email subject line ───────────────────────────────────────────────────────
 function buildSubject(
   name: string, matchCount: number, isTest: boolean,
-  usedMockData: boolean, dateStr: string,
+  usedMockData: boolean, _dateStr: string,
 ): string {
   const prefix = name ? `${name} — ` : '';
   if (isTest && usedMockData) {
-    return `${prefix}MyCareerBrain: Test Email Preview (mock data) · ${dateStr}`;
+    return `${prefix}🎯 Daily Scout: Test preview (${matchCount} mock matches)`;
   }
   if (matchCount === 0) {
-    return `${prefix}MyCareerBrain: No new matches today · ${dateStr}`;
+    return `${prefix}🎯 Daily Scout: No new matches today`;
   }
-  return `${prefix}MyCareerBrain: ${matchCount} new match${matchCount !== 1 ? 'es' : ''} · ${dateStr}`;
+  return `${prefix}🎯 Daily Scout: ${matchCount} match${matchCount !== 1 ? 'es' : ''} found`;
 }
 
 // ── Premium email HTML (fully inline CSS for Gmail/Outlook) ─────────────────
