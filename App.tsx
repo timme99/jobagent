@@ -993,14 +993,6 @@ function AppContent() {
                     <div className="absolute right-[-10%] top-[-20%] w-64 h-64 rounded-full blur-3xl" style={{ background: 'rgba(17,204,245,0.1)' }} />
                   </div>
 
-                  <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
-                    <h4 className="text-lg font-black text-slate-900 mb-2 flex items-center gap-2">
-                      <Zap size={18} /> Autonomous Cloud Mode
-                    </h4>
-                    <p className="text-slate-500 text-sm leading-relaxed">
-                      For fully automated daily digests, deploy the <code className="bg-white px-2 py-0.5 rounded-lg text-xs font-bold border">send-digest</code> Edge Function and set up a cron schedule in your Supabase dashboard.
-                    </p>
-                  </div>
                 </div>
               </section>
             </div>

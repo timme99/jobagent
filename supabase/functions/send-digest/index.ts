@@ -82,6 +82,56 @@ serve(async (req: Request) => {
       });
     }
 
+    const body = await req.json().catch(() => ({}));
+
+    // ── NUCLEAR TEST MODE — top of handler, no auth, no DB ───────────────────
+    // If body.test === true, skip ALL auth, DB queries, and thresholds.
+    // Immediately build a mock email and send it. Always succeeds.
+    if (body.test === true) {
+      const toEmail: string = body.email || '';
+      if (!toEmail) {
+        return jsonRes(400, { error: 'Test mode requires an email address in the request body.' });
+      }
+
+      console.log('TEST MODE: Bypassing DB and sending mock email');
+      const effectiveThreshold: number = body.threshold ?? 80;
+      const displayName: string = body.display_name || '';
+      const dateStr = new Date().toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric',
+      });
+
+      const html = buildEmailHtml({
+        displayName, dateStr, matches: MOCK_MATCHES as any[],
+        effectiveThreshold, totalFetched: 0, isNoMatches: false, usedMockData: true,
+      });
+      const subjectLine = buildSubject(displayName, MOCK_MATCHES.length, true, true, dateStr);
+
+      console.log(`TEST MODE: Sending mock email to ${toEmail} — "${subjectLine}"`);
+      const resendRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: RESEND_FROM, to: [toEmail], subject: subjectLine, html }),
+      });
+      const resendData = await resendRes.json();
+      console.log(`TEST MODE: Resend API ${resendRes.status}: ${JSON.stringify(resendData)}`);
+
+      if (!resendRes.ok) {
+        return jsonRes(resendRes.status, { error: 'Resend API error', details: resendData });
+      }
+
+      return jsonRes(200, {
+        success: true,
+        emailId: resendData.id,
+        sentTo: toEmail,
+        matchCount: MOCK_MATCHES.length,
+        threshold: effectiveThreshold,
+        highestScore: 97,
+        isTest: true,
+        usedMockData: true,
+      });
+    }
+
+    // ── Authenticated paths (cron / service-role / user JWT) ─────────────────
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return jsonRes(401, { error: 'Missing Authorization header' });
 
@@ -89,7 +139,6 @@ serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const body = await req.json().catch(() => ({}));
     const isDiagnostic = body.check === true;
     const token = authHeader.replace('Bearer ', '');
 
@@ -103,24 +152,22 @@ serve(async (req: Request) => {
       console.log(`Function started by: service_role for user ${body.user_id}`);
       const result = await sendDigestForUser(
         supabase, body.user_id, body.email, body,
-        RESEND_API_KEY, RESEND_FROM, isDiagnostic, undefined, body.test === true,
+        RESEND_API_KEY, RESEND_FROM, isDiagnostic, undefined, false,
       );
       return jsonRes(result.status, result.data);
     }
 
-    // ── User JWT path (frontend "Send Test Digest" button) ───────────────────
+    // ── User JWT path ────────────────────────────────────────────────────────
     const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
     if (userError || !user) return jsonRes(401, { error: 'Unauthorized' });
 
-    console.log(`Function started by: ${user.id} (user JWT — isTest=true)`);
-    // Frontend calls are ALWAYS test mode: bypass time filter, bypass threshold,
-    // and fall back to mock data when the DB is empty.
+    console.log(`Function started by: ${user.id} (user JWT)`);
     const result = await sendDigestForUser(
       supabase, user.id, user.email, body,
-      RESEND_API_KEY, RESEND_FROM, isDiagnostic, undefined, true,
+      RESEND_API_KEY, RESEND_FROM, isDiagnostic, undefined, false,
     );
     return jsonRes(result.status, result.data);
 

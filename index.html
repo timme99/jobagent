@@ -7,74 +7,10 @@
   <title>MyCareerBrain</title>
   <link rel="icon" type="image/png" href="https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/logo.png">
   <link rel="apple-touch-icon" href="https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/logo.png">
-  <script src="https://cdn.tailwindcss.com"></script>
-
   <!-- Norwester — headings -->
   <link href="https://fonts.cdnfonts.com/css/norwester" rel="stylesheet">
   <!-- DM Sans — body (closest freely-available match to Canva Sans) -->
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
-
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              purple: '#30003b',
-              dark:   '#1a0024',
-              cyan:   '#11ccf5',
-              light:  '#f5e6ff',
-            }
-          },
-          fontFamily: {
-            heading: ['Norwester', 'Impact', 'Arial Narrow', 'sans-serif'],
-            /* Canva Sans is proprietary; DM Sans is the closest web-available equivalent */
-            body: ['DM Sans', 'system-ui', 'sans-serif'],
-          }
-        }
-      }
-    }
-  </script>
-
-  <style>
-    /* ── Global typography ─────────────────────────────────────────── */
-    body {
-      font-family: 'DM Sans', system-ui, sans-serif;
-      background: #ffffff;
-      color: #0f172a;
-    }
-    h1, h2, h3, h4, .font-heading {
-      font-family: 'Norwester', 'Impact', 'Arial Narrow', sans-serif;
-      letter-spacing: 0.02em;
-    }
-
-    /* ── Utilities ─────────────────────────────────────────────────── */
-    .glass {
-      background: rgba(255, 255, 255, 0.88);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
-    .brand-gradient {
-      background: linear-gradient(135deg, #30003b 0%, #1a0024 100%);
-    }
-    .cyan-glow {
-      box-shadow: 0 0 24px rgba(17, 204, 245, 0.35);
-    }
-
-    /* ── Progress bar animation ────────────────────────────────────── */
-    @keyframes mcb-progress {
-      from { transform: translateX(-100%); }
-      to   { transform: translateX(100%); }
-    }
-    .animate-progress {
-      animation: mcb-progress 1.6s ease-in-out infinite;
-    }
-
-    /* ── Custom scrollbar ──────────────────────────────────────────── */
-    .custom-scrollbar::-webkit-scrollbar       { width: 4px; }
-    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(48,0,59,0.15); border-radius: 2px; }
-  </style>
 
   <script type="importmap">
   {
