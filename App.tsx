@@ -333,7 +333,9 @@ function AppContent() {
       if (!res.ok) {
         setDigestStatus(`Failed: ${data.error || 'Unknown error'}${data.details ? ` — ${JSON.stringify(data.details)}` : ''}`);
       } else if (data.success) {
-        if (data.matchCount === 0) {
+        if (data.usedMockData) {
+          setDigestStatus(`✓ Test email sent to ${data.sentTo} using mock data (no real scans in DB yet). Run a scan first to see real matches.`);
+        } else if (data.matchCount === 0) {
           setDigestStatus(`✓ "No matches" email sent to ${data.sentTo}. [Threshold: ${data.threshold}% | Highest score in DB: ${data.highestScore ?? '?'}%]`);
         } else {
           setDigestStatus(`✓ Digest sent to ${data.sentTo} — ${data.matchCount} match${data.matchCount !== 1 ? 'es' : ''} above ${data.threshold}%`);
