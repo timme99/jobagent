@@ -96,29 +96,38 @@ function normalizeReasoning(r: any): { pros: string[]; cons: string[]; riskFacto
 export async function saveJobMatches(
   userId: string,
   matches: JobMatch[]
-): Promise<void> {
-  if (matches.length === 0) return;
+): Promise<JobMatch[]> {
+  if (matches.length === 0) return [];
 
   const rows = matches
     // Required by DB: user_id, title, company must be present.
     .filter((m) => m.title && m.company)
     .map((m) => ({
-      id: m.id,
-      user_id: userId,           // auth.uid() equivalent — always the calling user
+      // No `id` — the DB generates a valid UUID via gen_random_uuid().
+      // Sending a frontend string like "job_1" or "aa-xxxx" causes a 400.
+      user_id: userId,
       title: m.title,
       company: m.company,
       location: m.location ?? '',
-      description: m.description ?? '',
       score: m.score,
       reasoning: normalizeReasoning(m.reasoning), // { pros, cons, riskFactors }
       link: m.link ?? '',
-      status: 'pending' as const, // DB constraint: must be 'pending' on initial insert
+      status: 'pending' as const,
       source: m.source || 'manual',
+      // `description` is omitted — it is not a column in the job_matches schema.
     }));
 
-  if (rows.length === 0) return;
-  const { error } = await supabase.from('job_matches').upsert(rows, { onConflict: 'id' });
+  if (rows.length === 0) return [];
+
+  // Use insert (not upsert) so Supabase auto-generates UUIDs for every row.
+  const { data, error } = await supabase
+    .from('job_matches')
+    .insert(rows)
+    .select();
   if (error) throw error;
+
+  // Return the DB rows (with real UUIDs) so the caller can sync React state.
+  return (data ?? []).map(rowToJobMatch);
 }
 
 export async function loadJobMatches(userId: string): Promise<JobMatch[]> {
