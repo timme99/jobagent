@@ -2,14 +2,14 @@
 // Supabase Edge Function: sends a job digest email via Resend.
 //
 // Invocation modes:
-//   1. User JWT (frontend "Send Test Digest" button)
+//   1. User JWT (frontend "Send Test Digest" button) — body.test:true skips time filter
 //   2. Service role key + user_id body  → targets a specific user
 //   3. Service role key, no user_id     → pg_cron broadcast to all automation-enabled users
 //   4. Any of the above + {"check":true} → diagnostic mode, returns summary without sending
 //
 // Required Supabase secrets:
 //   RESEND_API_KEY  – your Resend API key
-//   RESEND_FROM     – verified sender address (e.g. "JobScout <digest@yourdomain.com>")
+//   RESEND_FROM     – verified sender address (e.g. "MyCareerBrain <digest@yourdomain.com>")
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
@@ -31,7 +31,7 @@ serve(async (req: Request) => {
 
   try {
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'JobScout AI <onboarding@resend.dev>';
+    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'MyCareerBrain <onboarding@resend.dev>';
 
     if (!RESEND_API_KEY) {
       return jsonRes(500, {
@@ -54,7 +54,7 @@ serve(async (req: Request) => {
 
     const token = authHeader.replace('Bearer ', '');
 
-    // ── Service-role path (cron job or dashboard test) ───────────────────────
+    // ── Service-role path (cron job or server-side call) ─────────────────────
     if (token === serviceRoleKey) {
       if (!body.user_id) {
         // pg_cron broadcast mode: send digests to ALL automation-enabled users
@@ -63,15 +63,16 @@ serve(async (req: Request) => {
         return jsonRes(200, { processed: results.length, results });
       }
 
-      // Service role with an explicit user_id (dashboard test for specific user)
-      console.log(`Function started by: ${body.user_id}`);
+      // Service role with an explicit user_id
+      console.log(`Function started by: service_role for user ${body.user_id}`);
+      const isTest = body.test === true;
       const result = await sendDigestForUser(
-        supabase, body.user_id, body.email, body, RESEND_API_KEY, RESEND_FROM, isDiagnostic,
+        supabase, body.user_id, body.email, body, RESEND_API_KEY, RESEND_FROM, isDiagnostic, undefined, isTest,
       );
       return jsonRes(result.status, result.data);
     }
 
-    // ── User JWT path (frontend) ─────────────────────────────────────────────
+    // ── User JWT path (frontend "Send Test Digest" button) ───────────────────
     const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -80,13 +81,18 @@ serve(async (req: Request) => {
       return jsonRes(401, { error: 'Unauthorized' });
     }
 
-    console.log(`Function started by: ${user.id}`);
+    console.log(`Function started by: ${user.id} (user JWT — test mode)`);
+
+    // Frontend calls are always treated as test: time filter is skipped so you
+    // see ALL matches above threshold regardless of when they were scanned.
+    const isTest = true;
     const result = await sendDigestForUser(
-      supabase, user.id, user.email, body, RESEND_API_KEY, RESEND_FROM, isDiagnostic,
+      supabase, user.id, user.email, body, RESEND_API_KEY, RESEND_FROM, isDiagnostic, undefined, isTest,
     );
     return jsonRes(result.status, result.data);
 
   } catch (err: any) {
+    console.error('Unhandled error:', err);
     return jsonRes(500, { error: err.message || 'Internal server error' });
   }
 });
@@ -98,11 +104,18 @@ async function processAllUsers(
   resendFrom: string,
   isDiagnostic: boolean,
 ) {
-  const { data: allSettings } = await supabase
+  const { data: allSettings, error: settingsError } = await supabase
     .from('user_settings')
     .select('user_id, digest_email, match_threshold, last_digest_sent_at, timezone, display_name')
     .eq('automation_enabled', true)
     .not('digest_email', 'is', null);
+
+  if (settingsError) {
+    console.error('Failed to load user settings:', settingsError.message);
+    return [{ error: 'Failed to load user settings', details: settingsError.message }];
+  }
+
+  console.log(`Broadcast: found ${allSettings?.length ?? 0} automation-enabled user(s)`);
 
   const now = new Date();
   const results: Record<string, unknown>[] = [];
@@ -125,16 +138,15 @@ async function processAllUsers(
       console.log(`Skipping user ${s.user_id}: hour in ${tz} is ${currentHour}, not 8`);
       results.push({
         userId: s.user_id,
-        status: 200,
         skipped: true,
         reason: `Not 8 AM in ${tz} (currently ${currentHour}:xx)`,
       });
       continue;
     }
 
-    console.log(`Function started by: ${s.user_id}`);
+    console.log(`Processing digest for user ${s.user_id} (8 AM in ${tz})`);
     const result = await sendDigestForUser(
-      supabase, s.user_id, s.digest_email, {}, resendApiKey, resendFrom, isDiagnostic, s,
+      supabase, s.user_id, s.digest_email, {}, resendApiKey, resendFrom, isDiagnostic, s, false,
     );
     results.push({
       userId: s.user_id,
@@ -155,57 +167,68 @@ async function sendDigestForUser(
   resendFrom: string,
   isDiagnostic: boolean,
   preloadedSettings?: Record<string, any>,
+  // isTest=true → skip created_at time filter (used by the frontend test button)
+  isTest = false,
 ): Promise<{ status: number; data: unknown }> {
 
   // Load settings (re-use the row already fetched in broadcast mode)
   let settings = preloadedSettings;
   if (!settings) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('user_settings')
       .select('digest_email, match_threshold, last_digest_sent_at, display_name')
       .eq('user_id', userId)
       .single();
+    if (error) {
+      console.error(`Failed to load settings for user ${userId}:`, error.message);
+    }
     settings = data ?? {};
   }
 
-  const recipientEmail: string = body.email || settings.digest_email || userEmail;
+  const recipientEmail: string = body.email || settings.digest_email || userEmail || '';
   if (!recipientEmail) {
     return { status: 400, data: { error: 'No digest email configured' } };
   }
 
   const effectiveThreshold: number = body.threshold ?? settings.match_threshold ?? 80;
 
-  // Determine the time window.
-  // If last_digest_sent_at is empty (new user / first run), fall back to the last 24 hours
-  // so the very first email always has something to send.
-  const lastSent: string | null = settings.last_digest_sent_at ?? null;
-  const since = lastSent
-    ? new Date(lastSent).toISOString()
-    : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-  // Fetch matches inside the time window
-  const { data: matches, error: matchError } = await supabase
+  // ── Build the query ──────────────────────────────────────────────────────
+  // isTest = true  → load ALL non-dismissed matches above threshold (no time filter)
+  // isTest = false → only matches created since the last digest (24h fallback for new users)
+  let query = supabase
     .from('job_matches')
     .select('*')
     .eq('user_id', userId)
-    .gte('score', effectiveThreshold)
     .neq('status', 'dismissed')
-    .gte('created_at', since)
     .order('score', { ascending: false })
     .limit(20);
+
+  if (!isTest) {
+    const lastSent: string | null = settings.last_digest_sent_at ?? null;
+    const since = lastSent
+      ? new Date(lastSent).toISOString()
+      : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    console.log(`Time filter active: fetching matches created after ${since}`);
+    query = query.gte('created_at', since);
+  } else {
+    console.log('Time filter SKIPPED (test mode) — fetching all matches regardless of age');
+  }
+
+  const { data: allMatches, error: matchError } = await query;
 
   if (matchError) {
     return { status: 500, data: { error: 'Failed to load matches', details: matchError.message } };
   }
 
-  console.log(`Jobs found in last 24h: ${matches?.length ?? 0}`);
+  // Apply threshold filter in JS so we can log the comparison clearly
+  const totalFound = allMatches?.length ?? 0;
+  const highestScore = allMatches && allMatches.length > 0
+    ? Math.max(...allMatches.map((m: any) => m.score))
+    : 0;
 
-  if (!matches || matches.length === 0) {
-    return {
-      status: 200,
-      data: { message: 'No matches above threshold — no email sent', threshold: effectiveThreshold },
-    };
-  }
+  const matches = (allMatches ?? []).filter((m: any) => m.score >= effectiveThreshold);
+
+  console.log(`[DEBUG] User Threshold: ${effectiveThreshold} | Jobs fetched: ${totalFound} | Highest Match Score found: ${highestScore} | Matches above threshold: ${matches.length}`);
 
   // ── Diagnostic mode: summarise without sending ──────────────────────────
   if (isDiagnostic) {
@@ -213,24 +236,45 @@ async function sendDigestForUser(
       status: 200,
       data: {
         diagnostic: true,
+        isTest,
         wouldSendTo: recipientEmail,
-        matchCount: matches.length,
         threshold: effectiveThreshold,
-        since,
+        totalFetched: totalFound,
+        highestScore,
+        matchCount: matches.length,
         matches: matches.map((m: any) => ({
           id: m.id,
           title: m.title,
           company: m.company,
           score: m.score,
+          created_at: m.created_at,
         })),
       },
     };
   }
 
+  const displayName: string = settings.display_name || '';
+  const greeting = displayName ? `Good morning, ${escapeHtml(displayName)}!` : 'Good morning!';
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
   // ── Build email HTML ─────────────────────────────────────────────────────
-  const jobRows = matches
-    .map(
-      (m: any) => `
+  let bodyContent: string;
+  let subjectLine: string;
+
+  if (matches.length === 0) {
+    // Always send a "no matches" email so the user knows automation is working
+    subjectLine = `${displayName ? `${displayName} — ` : ''}MyCareerBrain: No new matches today (${dateStr})`;
+    bodyContent = `
+    <div style="padding:32px 28px; text-align:center;">
+      <div style="font-size:48px; margin-bottom:16px;">🔍</div>
+      <p style="color:#64748b; font-size:15px; margin:0 0 8px;">No new job matches above <strong>${effectiveThreshold}%</strong> were found today.</p>
+      <p style="color:#94a3b8; font-size:13px; margin:0;">Your autonomous engine is running — check back tomorrow, or lower your threshold in settings.</p>
+    </div>`;
+  } else {
+    subjectLine = `${displayName ? `${displayName} — ` : ''}MyCareerBrain Digest: ${matches.length} new match${matches.length !== 1 ? 'es' : ''} (${dateStr})`;
+    const jobRows = matches
+      .map(
+        (m: any) => `
       <tr>
         <td style="padding:12px 16px; border-bottom:1px solid #f1f5f9;">
           <div style="font-weight:700; color:#0f172a; font-size:15px;">${escapeHtml(m.title)}</div>
@@ -244,11 +288,15 @@ async function sendDigestForUser(
           <a href="${escapeHtml(m.link || '#')}" style="display:inline-block; background:#30003b; color:white; padding:8px 16px; border-radius:12px; font-size:13px; font-weight:700; text-decoration:none;">View</a>
         </td>
       </tr>`,
-    )
-    .join('');
-
-  const displayName: string = settings.display_name || '';
-  const greeting = displayName ? `Good morning, ${escapeHtml(displayName)}!` : 'Good morning!';
+      )
+      .join('');
+    bodyContent = `
+    <div style="padding:8px 0;">
+      <table style="width:100%; border-collapse:collapse;">
+        ${jobRows}
+      </table>
+    </div>`;
+  }
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
@@ -257,13 +305,9 @@ async function sendDigestForUser(
     <div style="background:linear-gradient(135deg,#30003b,#1a0024); padding:32px 28px; text-align:center;">
       <h1 style="color:white; margin:0; font-size:22px; font-weight:800;">${greeting}</h1>
       <p style="color:rgba(255,255,255,0.9); margin:8px 0 0; font-size:16px; font-weight:600;">Your Daily Job Digest</p>
-      <p style="color:rgba(255,255,255,0.8); margin:6px 0 0; font-size:14px;">${matches.length} match${matches.length > 1 ? 'es' : ''} scoring ${effectiveThreshold}%+</p>
+      <p style="color:rgba(17,204,245,0.9); margin:6px 0 0; font-size:13px;">${dateStr}</p>
     </div>
-    <div style="padding:8px 0;">
-      <table style="width:100%; border-collapse:collapse;">
-        ${jobRows}
-      </table>
-    </div>
+    ${bodyContent}
     <div style="padding:20px 28px; text-align:center; border-top:1px solid #f1f5f9;">
       <p style="color:#94a3b8; font-size:12px; margin:0;">Sent by MyCareerBrain · <a href="#" style="color:#30003b; text-decoration:none;">Manage preferences</a></p>
     </div>
@@ -272,6 +316,7 @@ async function sendDigestForUser(
 </html>`;
 
   // ── Send via Resend ──────────────────────────────────────────────────────
+  console.log(`Sending digest to ${recipientEmail} — subject: "${subjectLine}"`);
   const resendRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -281,23 +326,29 @@ async function sendDigestForUser(
     body: JSON.stringify({
       from: resendFrom,
       to: [recipientEmail],
-      subject: `${displayName ? `Good morning, ${displayName}! ` : ''}JobScout Digest: ${matches.length} new match${matches.length > 1 ? 'es' : ''} (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`,
+      subject: subjectLine,
       html,
     }),
   });
 
   const resendData = await resendRes.json();
-  console.log(`Resend API Status: ${JSON.stringify(resendData)}`);
+  console.log(`Resend API Status: ${resendRes.status} — ${JSON.stringify(resendData)}`);
 
   if (!resendRes.ok) {
     return { status: resendRes.status, data: { error: 'Resend API error', details: resendData } };
   }
 
-  // Stamp the send time so the next run only picks up matches created after this point
-  await supabase
-    .from('user_settings')
-    .update({ last_digest_sent_at: new Date().toISOString() })
-    .eq('user_id', userId);
+  // Only stamp last_digest_sent_at on real (non-test) runs so the time window
+  // advances correctly for the next automated digest.
+  if (!isTest) {
+    await supabase
+      .from('user_settings')
+      .update({ last_digest_sent_at: new Date().toISOString() })
+      .eq('user_id', userId);
+    console.log(`Stamped last_digest_sent_at for user ${userId}`);
+  } else {
+    console.log('Test mode — last_digest_sent_at NOT updated');
+  }
 
   return {
     status: 200,
@@ -307,6 +358,8 @@ async function sendDigestForUser(
       sentTo: recipientEmail,
       matchCount: matches.length,
       threshold: effectiveThreshold,
+      highestScore,
+      isTest,
     },
   };
 }

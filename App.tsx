@@ -131,7 +131,9 @@ function AppContent() {
   const [strategy, setStrategy] = useState<SearchStrategy | null>(null);
   const [matches, setMatches] = useState<JobMatch[]>([]);
   const [shortlistedJobs, setShortlistedJobs] = useState<JobMatch[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Analyzing data...');
 
@@ -205,7 +207,7 @@ function AppContent() {
       return;
     }
     setIsLoading(true);
-    setLoadingText('Scout AI synthesizing unified profile from sources...');
+    setLoadingText('MyCareerBrain synthesizing unified profile from sources...');
     try {
       const { profile: data, sources } = await synthesizeProfile(profileUrl, cvText, extraContext);
       setProfile(data);
@@ -321,16 +323,23 @@ function AppContent() {
           body: JSON.stringify({
             email: digestEmail,
             threshold: matchThreshold,
+            // test:true is implicit on the server for user-JWT calls,
+            // but send it explicitly so it's clear in logs.
+            test: true,
           }),
         }
       );
       const data = await res.json();
       if (!res.ok) {
-        setDigestStatus(`Failed: ${data.error || 'Unknown error'}`);
+        setDigestStatus(`Failed: ${data.error || 'Unknown error'}${data.details ? ` — ${JSON.stringify(data.details)}` : ''}`);
       } else if (data.success) {
-        setDigestStatus(`Digest sent to ${data.sentTo} (${data.matchCount} matches)`);
+        if (data.matchCount === 0) {
+          setDigestStatus(`✓ "No matches" email sent to ${data.sentTo}. [Threshold: ${data.threshold}% | Highest score in DB: ${data.highestScore ?? '?'}%]`);
+        } else {
+          setDigestStatus(`✓ Digest sent to ${data.sentTo} — ${data.matchCount} match${data.matchCount !== 1 ? 'es' : ''} above ${data.threshold}%`);
+        }
       } else {
-        setDigestStatus(data.message || 'No matches to send.');
+        setDigestStatus(data.message || data.error || 'Unexpected response.');
       }
     } catch (err: any) {
       setDigestStatus(`Error: ${err.message}`);
@@ -372,10 +381,27 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen flex bg-white overflow-hidden selection:bg-[#11ccf5]/20 selection:text-[#30003b]">
-      {/* Sidebar */}
-      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} transition-all duration-500 ease-in-out flex flex-col z-20 shadow-2xl`}
-             style={{ background: 'linear-gradient(180deg, #30003b 0%, #1a0024 100%)' }}>
+    <div className="min-h-screen flex bg-white selection:bg-[#11ccf5]/20 selection:text-[#30003b]">
+
+      {/* Mobile overlay backdrop — shown when sidebar is open on small screens */}
+      {isSidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-20"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — fixed overlay on mobile, static column on desktop */}
+      <aside
+        className={`
+          fixed md:static top-0 bottom-0 left-0 z-30 flex flex-col shadow-2xl
+          transition-all duration-500 ease-in-out
+          ${isSidebarOpen
+            ? 'w-64 translate-x-0'
+            : '-translate-x-full md:translate-x-0 md:w-20'}
+        `}
+        style={{ background: 'linear-gradient(180deg, #30003b 0%, #1a0024 100%)' }}
+      >
         <div className="p-5 flex items-center gap-3 min-h-[72px]">
           <img
             src="https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/W%26Blogo.png"
@@ -461,11 +487,27 @@ function AppContent() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative bg-[#F8FAFC]">
-        <header className="sticky top-0 z-10 glass border-b border-slate-200/60 px-8 py-4 flex items-center justify-between">
-          <div className="animate-in fade-in slide-in-from-top-2 duration-500">
-            <h2 className="text-xl font-bold text-slate-900 capitalize tracking-tight">{view.replace('-', ' ')}</h2>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mt-0.5">MyCareerBrain</p>
+      <main className="flex-1 overflow-y-auto relative bg-white">
+        <header className="sticky top-0 z-10 glass border-b border-slate-200/60 px-4 md:px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Hamburger — mobile only */}
+            <button
+              className="md:hidden p-2 rounded-xl text-slate-500 hover:bg-slate-100 transition-colors flex-shrink-0"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              aria-label="Toggle menu"
+            >
+              <Menu size={20} />
+            </button>
+            {/* Mobile logo strip — visible only when sidebar is hidden on mobile */}
+            <img
+              src="https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/W%26Blogo.png"
+              alt="MyCareerBrain"
+              className="md:hidden h-7 w-auto object-contain flex-shrink-0"
+            />
+            <div className="animate-in fade-in slide-in-from-top-2 duration-500">
+              <h2 className="text-xl font-bold text-slate-900 capitalize tracking-tight">{view.replace('-', ' ')}</h2>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mt-0.5 hidden sm:block">MyCareerBrain</p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
              <div className="hidden md:flex flex-col items-end mr-2">
@@ -535,7 +577,7 @@ function AppContent() {
 
                   <div className="flex items-start gap-2 p-4 bg-amber-50 rounded-2xl border border-amber-100 text-amber-800 text-xs font-bold">
                     <Info size={16} className="mt-0.5 flex-shrink-0" />
-                    <p>Scout AI will cross-reference all provided data to identify trajectory patterns and hidden technical strengths.</p>
+                    <p>MyCareerBrain will cross-reference all provided data to identify trajectory patterns and hidden technical strengths.</p>
                   </div>
                 </div>
 
@@ -547,12 +589,13 @@ function AppContent() {
                   <button
                     onClick={handleSynthesize}
                     disabled={isLoading || (!profileUrl.trim() && !cvText.trim())}
-                    className="group relative overflow-hidden text-white px-10 py-4 rounded-2xl font-bold transition-all disabled:opacity-40 shadow-xl hover:-translate-y-1 flex items-center gap-3"
-                    style={{ background: '#30003b' }}
+                    className="group relative overflow-hidden px-10 py-4 rounded-2xl font-bold transition-all disabled:opacity-40 shadow-lg hover:-translate-y-1 flex items-center gap-3"
+                    style={{ background: '#11ccf5', color: '#30003b' }}
+                    onMouseEnter={e => !isLoading && (e.currentTarget.style.background = '#0db8d9')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '#11ccf5')}
                   >
-                    <span className="relative z-10">{isLoading ? 'Synthesizing Intelligence...' : 'Build Unified Profile'}</span>
+                    <span className="relative z-10 font-black">{isLoading ? 'Synthesizing Intelligence...' : 'Build Unified Profile'}</span>
                     <ChevronRight size={18} className="relative z-10 transition-transform group-hover:translate-x-1" />
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'linear-gradient(90deg, #30003b, #11ccf5)' }} />
                   </button>
                 </div>
               </section>
@@ -709,7 +752,7 @@ function AppContent() {
                       <input 
                         type="text" 
                         placeholder="Keywords (SaaS, Customer Success...)" 
-                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-indigo-100 outline-none transition-all"
+                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 outline-none transition-all"
                         value={scanKeywords}
                         onChange={(e) => setScanKeywords(e.target.value)}
                       />
@@ -719,20 +762,20 @@ function AppContent() {
                       <input 
                         type="text" 
                         placeholder="Location (Remote, Berlin...)" 
-                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-indigo-100 outline-none transition-all"
+                        className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 outline-none transition-all"
                         value={scanLocation}
                         onChange={(e) => setScanLocation(e.target.value)}
                       />
                     </div>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={handleScan}
                   disabled={isLoading}
-                  className="w-full md:w-auto flex items-center justify-center gap-3 text-white px-10 py-8 rounded-[2rem] font-black transition-all shadow-xl disabled:opacity-50 active:scale-95"
-                  style={{ background: '#30003b' }}
-                  onMouseEnter={e => { if (!isLoading) e.currentTarget.style.background = '#1a0024'; }}
-                  onMouseLeave={e => (e.currentTarget.style.background = '#30003b')}
+                  className="w-full md:w-auto flex items-center justify-center gap-3 px-10 py-8 rounded-[2rem] font-black transition-all shadow-lg disabled:opacity-50 active:scale-95"
+                  style={{ background: '#11ccf5', color: '#30003b' }}
+                  onMouseEnter={e => { if (!isLoading) e.currentTarget.style.background = '#0db8d9'; }}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#11ccf5')}
                 >
                   {isLoading ? <Loader2 className="animate-spin" size={28} /> : <Zap size={28} fill="currentColor" />}
                   <div className="text-left">
@@ -870,7 +913,7 @@ function AppContent() {
                   <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
                     <div>
                       <h4 className="font-bold text-slate-900">Enable Daily Scan</h4>
-                      <p className="text-xs text-slate-500">Scout will run every morning at 8:00 AM in your timezone.</p>
+                      <p className="text-xs text-slate-500">MyCareerBrain will run every morning at 8:00 AM in your timezone.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input
@@ -1112,14 +1155,28 @@ function AppContent() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="mt-16 mb-8 ml-auto mr-auto max-w-3xl px-8 text-center text-xs text-slate-400 leading-relaxed">
-        <div className="border-t border-slate-100 pt-6 space-y-1">
-          <p>
-            <button onClick={() => setView('legal')} className="text-slate-500 font-bold underline underline-offset-2 transition-colors" onMouseEnter={e => (e.currentTarget.style.color='#30003b')} onMouseLeave={e => (e.currentTarget.style.color='')}>Impressum &amp; Datenschutz</button>
-          </p>
-          <p>Maria Alejandra Diaz Linde &middot; Stuttgart, Germany</p>
-        </div>
+      {/* Fixed bottom footer — always visible, centered, with glass blur */}
+      <footer
+        className="fixed bottom-0 left-0 right-0 z-10 text-center py-2 px-4"
+        style={{
+          background: 'rgba(255,255,255,0.82)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          borderTop: '1px solid rgba(0,0,0,0.06)',
+        }}
+      >
+        <p className="text-[11px] text-slate-400 leading-tight">
+          <button
+            onClick={() => setView('legal')}
+            className="font-semibold transition-colors"
+            onMouseEnter={e => (e.currentTarget.style.color = '#30003b')}
+            onMouseLeave={e => (e.currentTarget.style.color = '')}
+          >
+            Impressum &amp; Datenschutz
+          </button>
+          <span className="mx-2 opacity-40">·</span>
+          Maria Alejandra Diaz Linde · Stuttgart, Germany
+        </p>
       </footer>
 
       {/* Loading Overlay */}
@@ -1135,7 +1192,7 @@ function AppContent() {
             </div>
             <h3 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">{loadingText}</h3>
             <p className="text-slate-500 font-medium leading-relaxed">
-              Scout AI is accessing external profile data and cross-referencing strategic rules for a perfect match.
+              MyCareerBrain is accessing external profile data and cross-referencing strategic rules for a perfect match.
             </p>
           </div>
         </div>
@@ -1273,10 +1330,10 @@ function JobCard({
             {onAccept && (
               <button 
                 onClick={(e) => { e.stopPropagation(); onAccept(); }}
-                className="px-6 py-2.5 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"
-                style={{ background: '#30003b' }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#1a0024')}
-                onMouseLeave={e => (e.currentTarget.style.background = '#30003b')}
+                className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
+                style={{ background: '#11ccf5', color: '#30003b' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#0db8d9')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#11ccf5')}
               >
                 <BookmarkCheck size={14} />
                 Save Match
