@@ -189,7 +189,7 @@ async function sendDigestForUser(
   isTest = false,
 ): Promise<{ status: number; data: unknown }> {
 
-  // ── 1. Load settings ───────────────────────────────────────────────────────
+  // ── 1. Load settings (always needed for recipient email + display name) ─────
   let settings = preloadedSettings;
   if (!settings) {
     const { data, error } = await supabase
@@ -207,72 +207,136 @@ async function sendDigestForUser(
   const effectiveThreshold: number = body.threshold ?? settings.match_threshold ?? 80;
   const displayName: string = settings.display_name || '';
 
-  // ── 2. Fetch matches ───────────────────────────────────────────────────────
-  let query = supabase
+  const dateStr = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric',
+  });
+
+  // ── 2. TEST FAST-PATH — fires immediately, before any time-filtered query ───
+  //    Tries to load real DB matches (no time filter, no threshold gate).
+  //    Falls back to MOCK_MATCHES when DB is empty so the email is always sent.
+  if (isTest) {
+    console.log('TEST FAST-PATH: engaged — skipping time filter and threshold gate');
+
+    const { data: rawMatches, error: matchError } = await supabase
+      .from('job_matches')
+      .select('*')
+      .eq('user_id', userId)
+      .neq('status', 'dismissed')
+      .order('score', { ascending: false })
+      .limit(20);
+
+    if (matchError) {
+      console.warn('TEST FAST-PATH: DB fetch error (continuing with mocks):', matchError.message);
+    }
+
+    const normalized = (rawMatches ?? []).map((m: any) => {
+      const rawScore = m.score;
+      const normalizedScore = normalizeScore(rawScore);
+      console.log(`Math check: DB Score ${rawScore} normalized to ${normalizedScore} vs Threshold ${effectiveThreshold}`);
+      return { ...m, score: normalizedScore };
+    });
+
+    let matches: any[] = normalized;
+    let usedMockData = false;
+
+    if (matches.length === 0) {
+      console.log('TEST FAST-PATH: DB empty — injecting MOCK_MATCHES for design preview');
+      matches = MOCK_MATCHES as any[];
+      usedMockData = true;
+    }
+
+    const highestScore = matches.length > 0 ? Math.max(...matches.map((m: any) => m.score)) : 0;
+
+    if (isDiagnostic) {
+      return {
+        status: 200,
+        data: {
+          diagnostic: true, isTest: true, usedMockData,
+          wouldSendTo: recipientEmail, threshold: effectiveThreshold,
+          totalFetched: normalized.length, highestScore, matchCount: matches.length,
+          matches: matches.map((m: any) => ({
+            id: m.id, title: m.title, company: m.company,
+            score: m.score, created_at: m.created_at,
+          })),
+        },
+      };
+    }
+
+    const html = buildEmailHtml({
+      displayName, dateStr, matches, effectiveThreshold,
+      totalFetched: normalized.length, isNoMatches: false, usedMockData,
+    });
+    const subjectLine = buildSubject(displayName, matches.length, true, usedMockData, dateStr);
+
+    console.log(`TEST FAST-PATH: Sending to ${recipientEmail} — "${subjectLine}"`);
+    const resendRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: resendFrom, to: [recipientEmail], subject: subjectLine, html }),
+    });
+    const resendData = await resendRes.json();
+    console.log(`Resend API ${resendRes.status}: ${JSON.stringify(resendData)}`);
+
+    if (!resendRes.ok) {
+      return { status: resendRes.status, data: { error: 'Resend API error', details: resendData } };
+    }
+
+    console.log('TEST FAST-PATH: last_digest_sent_at NOT updated (test run)');
+    return {
+      status: 200,
+      data: {
+        success: true, emailId: resendData.id, sentTo: recipientEmail,
+        matchCount: matches.length, threshold: effectiveThreshold,
+        highestScore, isTest: true, usedMockData,
+      },
+    };
+  }
+
+  // ── 3. Real automated path (isTest=false) ────────────────────────────────
+  const lastSent: string | null = settings.last_digest_sent_at ?? null;
+  const since = lastSent
+    ? new Date(lastSent).toISOString()
+    : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  console.log(`Time filter: matches after ${since}`);
+
+  const { data: rawMatches, error: matchError } = await supabase
     .from('job_matches')
     .select('*')
     .eq('user_id', userId)
     .neq('status', 'dismissed')
     .order('score', { ascending: false })
-    .limit(20);
+    .limit(20)
+    .gte('created_at', since);
 
-  if (!isTest) {
-    const lastSent: string | null = settings.last_digest_sent_at ?? null;
-    const since = lastSent
-      ? new Date(lastSent).toISOString()
-      : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    console.log(`Time filter: matches after ${since}`);
-    query = query.gte('created_at', since);
-  } else {
-    console.log('isTest=true — time filter SKIPPED, threshold filter SKIPPED');
-  }
-
-  const { data: rawMatches, error: matchError } = await query;
   if (matchError) {
     return { status: 500, data: { error: 'Failed to load matches', details: matchError.message } };
   }
 
-  // ── 3. Normalize scores & filter (skipped in test mode) ───────────────────
-  const normalized = (rawMatches ?? []).map((m: any) => ({
-    ...m,
-    score: normalizeScore(m.score),
-  }));
+  // ── 4. Normalize scores & apply threshold ─────────────────────────────────
+  const normalized = (rawMatches ?? []).map((m: any) => {
+    const rawScore = m.score;
+    const normalizedScore = normalizeScore(rawScore);
+    console.log(`Math check: DB Score ${rawScore} normalized to ${normalizedScore} vs Threshold ${effectiveThreshold}`);
+    return { ...m, score: normalizedScore };
+  });
 
   const totalFetched = normalized.length;
   const highestScore = totalFetched > 0 ? Math.max(...normalized.map((m: any) => m.score)) : 0;
 
-  // In test mode we show ALL fetched matches (no threshold gate), so you can
-  // verify the email design regardless of scores.
-  let matches: any[];
-  if (isTest) {
-    matches = normalized;
-    normalized.forEach((m: any) => {
-      console.log(`[DEBUG] Comparing Score: ${m.score} with Threshold: ${effectiveThreshold} → BYPASSED (test mode)`);
-    });
-  } else {
-    matches = normalized.filter((m: any) => {
-      const pass = m.score >= effectiveThreshold;
-      console.log(`[DEBUG] Comparing Score: ${m.score} with Threshold: ${effectiveThreshold} → ${pass ? 'PASS' : 'SKIP'}`);
-      return pass;
-    });
-  }
+  const matches = normalized.filter((m: any) => {
+    const pass = m.score >= effectiveThreshold;
+    console.log(`[FILTER] Score ${m.score} vs Threshold ${effectiveThreshold} → ${pass ? 'PASS' : 'SKIP'}`);
+    return pass;
+  });
 
-  console.log(`[DEBUG] totalFetched: ${totalFetched} | highestScore: ${highestScore} | matchesForEmail: ${matches.length}`);
+  console.log(`totalFetched: ${totalFetched} | highestScore: ${highestScore} | matchesForEmail: ${matches.length}`);
 
-  // ── 4. Mock data fallback (test mode only, when DB is empty) ───────────────
-  let usedMockData = false;
-  if (isTest && matches.length === 0) {
-    console.log('No real matches found — injecting mock data for test email design preview');
-    matches = MOCK_MATCHES as any[];
-    usedMockData = true;
-  }
-
-  // ── 5. Diagnostic mode: summarise without sending ──────────────────────────
+  // ── 5. Diagnostic mode ────────────────────────────────────────────────────
   if (isDiagnostic) {
     return {
       status: 200,
       data: {
-        diagnostic: true, isTest, usedMockData,
+        diagnostic: true, isTest: false, usedMockData: false,
         wouldSendTo: recipientEmail, threshold: effectiveThreshold,
         totalFetched, highestScore, matchCount: matches.length,
         matches: matches.map((m: any) => ({
@@ -283,19 +347,14 @@ async function sendDigestForUser(
     };
   }
 
-  // ── 6. Build email ─────────────────────────────────────────────────────────
-  const dateStr = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric',
-  });
-
+  // ── 6. Build email ────────────────────────────────────────────────────────
   const html = buildEmailHtml({
     displayName, dateStr, matches, effectiveThreshold,
-    totalFetched, isNoMatches: !isTest && matches.length === 0, usedMockData,
+    totalFetched, isNoMatches: matches.length === 0, usedMockData: false,
   });
+  const subjectLine = buildSubject(displayName, matches.length, false, false, dateStr);
 
-  const subjectLine = buildSubject(displayName, matches.length, isTest, usedMockData, dateStr);
-
-  // ── 7. Send via Resend ─────────────────────────────────────────────────────
+  // ── 7. Send via Resend ────────────────────────────────────────────────────
   console.log(`Sending to ${recipientEmail} — "${subjectLine}"`);
   const resendRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -310,23 +369,19 @@ async function sendDigestForUser(
     return { status: resendRes.status, data: { error: 'Resend API error', details: resendData } };
   }
 
-  // Only stamp last_digest_sent_at on real automated runs
-  if (!isTest) {
-    await supabase
-      .from('user_settings')
-      .update({ last_digest_sent_at: new Date().toISOString() })
-      .eq('user_id', userId);
-    console.log(`Stamped last_digest_sent_at for ${userId}`);
-  } else {
-    console.log('Test mode — last_digest_sent_at NOT updated');
-  }
+  // Stamp last_digest_sent_at on real automated runs
+  await supabase
+    .from('user_settings')
+    .update({ last_digest_sent_at: new Date().toISOString() })
+    .eq('user_id', userId);
+  console.log(`Stamped last_digest_sent_at for ${userId}`);
 
   return {
     status: 200,
     data: {
       success: true, emailId: resendData.id, sentTo: recipientEmail,
       matchCount: matches.length, threshold: effectiveThreshold,
-      highestScore, isTest, usedMockData,
+      highestScore, isTest: false, usedMockData: false,
     },
   };
 }
