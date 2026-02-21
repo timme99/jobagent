@@ -83,24 +83,40 @@ export async function loadStrategy(
 }
 
 // ── Job Matches ───────────────────────────────────────────────────────
+
+// Always produces the exact shape the DB column expects.
+function normalizeReasoning(r: any): { pros: string[]; cons: string[]; riskFactors: string[] } {
+  return {
+    pros: Array.isArray(r?.pros) ? r.pros : [],
+    cons: Array.isArray(r?.cons) ? r.cons : [],
+    riskFactors: Array.isArray(r?.riskFactors) ? r.riskFactors : [],
+  };
+}
+
 export async function saveJobMatches(
   userId: string,
   matches: JobMatch[]
 ): Promise<void> {
   if (matches.length === 0) return;
-  const rows = matches.map((m) => ({
-    id: m.id,
-    user_id: userId,
-    title: m.title,
-    company: m.company,
-    location: m.location,
-    description: m.description,
-    score: m.score,
-    reasoning: m.reasoning,
-    link: m.link,
-    status: m.status ?? 'pending',
-    source: m.source || 'manual',
-  }));
+
+  const rows = matches
+    // Required by DB: user_id, title, company must be present.
+    .filter((m) => m.title && m.company)
+    .map((m) => ({
+      id: m.id,
+      user_id: userId,           // auth.uid() equivalent — always the calling user
+      title: m.title,
+      company: m.company,
+      location: m.location ?? '',
+      description: m.description ?? '',
+      score: m.score,
+      reasoning: normalizeReasoning(m.reasoning), // { pros, cons, riskFactors }
+      link: m.link ?? '',
+      status: 'pending' as const, // DB constraint: must be 'pending' on initial insert
+      source: m.source || 'manual',
+    }));
+
+  if (rows.length === 0) return;
   const { error } = await supabase.from('job_matches').upsert(rows, { onConflict: 'id' });
   if (error) throw error;
 }
@@ -146,7 +162,7 @@ function rowToJobMatch(row: any): JobMatch {
     location: row.location ?? '',
     description: row.description ?? '',
     score: row.score ?? 0,
-    reasoning: row.reasoning ?? { pros: [], cons: [], riskFactors: [] },
+    reasoning: normalizeReasoning(row.reasoning), // always { pros, cons, riskFactors }
     link: row.link ?? '#',
     source: row.source,
     status: row.status,
