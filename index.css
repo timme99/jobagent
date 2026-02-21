@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Global typography ─────────────────────────────────────────── */
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: #ffffff;
+  color: #0f172a;
+}
+h1, h2, h3, h4, .font-heading {
+  font-family: 'Norwester', 'Impact', 'Arial Narrow', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+/* ── Utilities ─────────────────────────────────────────────────── */
+.glass {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.brand-gradient {
+  background: linear-gradient(135deg, #30003b 0%, #1a0024 100%);
+}
+.cyan-glow {
+  box-shadow: 0 0 24px rgba(17, 204, 245, 0.35);
+}
+
+/* ── Progress bar animation ────────────────────────────────────── */
+@keyframes mcb-progress {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+.animate-progress {
+  animation: mcb-progress 1.6s ease-in-out infinite;
+}
+
+/* ── Custom scrollbar ──────────────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar       { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(48,0,59,0.15); border-radius: 2px; }

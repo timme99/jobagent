@@ -160,6 +160,9 @@ export interface UserSettings {
   scanKeywords: string;
   scanLocation: string;
   digestEmail: string;
+  displayName: string;
+  avatarIcon: string;
+  timezone: string;
 }
 
 export async function saveSettings(
@@ -172,6 +175,9 @@ export async function saveSettings(
   if (settings.scanKeywords !== undefined) row.scan_keywords = settings.scanKeywords;
   if (settings.scanLocation !== undefined) row.scan_location = settings.scanLocation;
   if (settings.digestEmail !== undefined) row.digest_email = settings.digestEmail;
+  if (settings.displayName !== undefined) row.display_name = settings.displayName;
+  if (settings.avatarIcon !== undefined) row.avatar_icon = settings.avatarIcon;
+  if (settings.timezone !== undefined) row.timezone = settings.timezone;
   const { error } = await supabase.from('user_settings').upsert(row, { onConflict: 'user_id' });
   if (error) throw error;
 }
@@ -189,6 +195,9 @@ export async function loadSettings(userId: string): Promise<UserSettings> {
       scanKeywords: '',
       scanLocation: 'Remote',
       digestEmail: '',
+      displayName: '',
+      avatarIcon: 'User',
+      timezone: '',
     };
   }
   return {
@@ -197,6 +206,9 @@ export async function loadSettings(userId: string): Promise<UserSettings> {
     scanKeywords: data.scan_keywords ?? '',
     scanLocation: data.scan_location ?? 'Remote',
     digestEmail: data.digest_email ?? '',
+    displayName: data.display_name ?? '',
+    avatarIcon: data.avatar_icon ?? 'User',
+    timezone: data.timezone ?? '',
   };
 }
 
