@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import { MasterProfile, SearchStrategy, JobMatch, AppView } from './types';
 import { synthesizeProfile, refineStrategy, scoreJobMatch, fetchLiveJobs } from './geminiService';
-import { fetchArbeitsagenturJobs, fetchJSearchJobs } from './jobSources';
+import { fetchJSearchJobs } from './jobSources';
 import { AuthProvider, useAuth } from './AuthProvider';
 import AuthPage from './AuthPage';
 import * as db from './supabaseService';
@@ -251,13 +251,33 @@ function AppContent() {
     try {
       const keywords = scanKeywords || profile.skills?.[0] || 'software engineer';
 
-      // Fetch from all three sources in parallel
+      // Fetch from all three sources in parallel.
+      // Arbeitsagentur is fetched via Edge Function to avoid browser CORS restrictions.
+      const { data: { session } } = await supabase.auth.getSession();
+      const fetchArbeitsagentur = async (): Promise<any[]> => {
+        if (!session) return [];
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-jobs`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ keywords, location: scanLocation }),
+          }
+        );
+        if (!res.ok) return [];
+        const d = await res.json();
+        return d.jobs ?? [];
+      };
+
       const [geminiJobs, arbeitsagenturJobs, jsearchJobs] = await Promise.all([
         fetchLiveJobs(keywords, scanLocation).catch((err) => {
           console.error('Gemini job fetch failed:', err);
           return [] as any[];
         }),
-        fetchArbeitsagenturJobs(keywords, scanLocation).catch((err) => {
+        fetchArbeitsagentur().catch((err) => {
           console.error('Arbeitsagentur job fetch failed:', err);
           return [] as any[];
         }),
@@ -292,8 +312,15 @@ function AppContent() {
       }
 
       const sorted = scoredResults.sort((a, b) => b.score - a.score);
+      // Show optimistic results immediately so the UI isn't blank while saving.
       setMatches(sorted);
-      await db.saveJobMatches(userId, sorted);
+      // Save to DB and replace local state with the returned rows, which carry
+      // real Supabase-generated UUIDs instead of ephemeral frontend strings.
+      // This ensures that subsequent updateJobStatus calls use valid UUIDs.
+      const savedWithRealIds = await db.saveJobMatches(userId, sorted);
+      if (savedWithRealIds.length > 0) {
+        setMatches(savedWithRealIds.filter(m => m.status !== 'accepted'));
+      }
     } catch (error: any) {
       console.error(error);
       const isRateLimit = error?.message?.includes('429');
