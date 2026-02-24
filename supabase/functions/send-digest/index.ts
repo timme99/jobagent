@@ -518,6 +518,10 @@ serve(async (req: Request) => {
 
   try {
 
+    // ── URL params — parsed before body so test-via-GET works in browsers ────
+    const url = new URL(req.url);
+    const isTestQuery = url.searchParams.get('test') === 'true';
+
     // ── Parse body first — no header or auth reads above this line ───────────
     const body = await req.json().catch(() => ({}));
 
@@ -527,8 +531,10 @@ serve(async (req: Request) => {
     });
 
     // ── TEST MODE — VIP pass ─────────────────────────────────────────────────
-    // Returns here immediately. Authorization header is NEVER read.
-    if (body.test === true) {
+    // Triggered by body.test===true (POST from Send Preview button)
+    // OR ?test=true query param (GET from browser / curl).
+    // Authorization header is NEVER read inside this block.
+    if (body.test === true || isTestQuery) {
       const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
       const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
       if (!RESEND_API_KEY) {
@@ -538,16 +544,18 @@ serve(async (req: Request) => {
         );
       }
 
-      const toEmail: string = body.email || '';
+      // email: POST body takes priority; fall back to ?email= query param
+      const toEmail: string = body.email || url.searchParams.get('email') || '';
       if (!toEmail) {
         return new Response(
-          JSON.stringify({ error: 'Test mode requires an email address in the request body.' }),
+          JSON.stringify({ error: 'Test mode requires an email — POST body.email or ?email= query param.' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
 
       console.log('TEST MODE: Bypassing auth and sending mock email');
-      const effectiveThreshold: number = body.threshold ?? 80;
+      const effectiveThreshold: number =
+        body.threshold ?? parseInt(url.searchParams.get('threshold') || '80', 10);
       const displayName: string = body.display_name || '';
 
       const html = buildEmailHtml({
