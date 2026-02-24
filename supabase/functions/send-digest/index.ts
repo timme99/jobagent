@@ -14,6 +14,8 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
+// ── Module-level constants (available to every function in this file) ─────────
+
 const LOGO_URL =
   'https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/logo.png';
 
@@ -55,11 +57,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function jsonRes(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function escapeHtml(str: string): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // Normalize a score to 0-100 scale.
@@ -70,19 +82,14 @@ function normalizeScore(raw: number): number {
 }
 
 // Detect a service-role credential regardless of how the cron presents it.
-// Two cases are handled:
-//   A) The raw SUPABASE_SERVICE_ROLE_KEY string is sent as the bearer token.
-//   B) pg_cron sends a short-lived signed JWT whose payload has role=service_role.
-//      JWT segments are base64url-encoded (uses - and _ instead of + and /);
-//      atob() requires standard base64, so we convert before decoding.
+// Case A: the raw SUPABASE_SERVICE_ROLE_KEY string is used directly as the bearer token.
+// Case B: pg_cron sends a short-lived signed JWT whose payload has role=service_role.
+//         JWT segments are base64url-encoded; atob() needs standard base64, so convert first.
 function isServiceRoleToken(token: string, serviceRoleKey: string): boolean {
-  // Case A — raw key equality
   if (token === serviceRoleKey) return true;
-  // Case B — JWT with service_role claim
   try {
     const segment = token.split('.')[1];
     if (!segment) return false;
-    // base64url → base64
     const base64 = segment.replace(/-/g, '+').replace(/_/g, '/');
     const payload = JSON.parse(atob(base64));
     const role = payload?.role ?? payload?.app_metadata?.role ?? '';
@@ -94,127 +101,153 @@ function isServiceRoleToken(token: string, serviceRoleKey: string): boolean {
   }
 }
 
-serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+// ── Email subject line ────────────────────────────────────────────────────────
 
-  try {
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
-
-    if (!RESEND_API_KEY) {
-      return jsonRes(500, {
-        error: 'RESEND_API_KEY not configured. Run: supabase secrets set RESEND_API_KEY=re_...',
-      });
-    }
-
-    const body = await req.json().catch(() => ({}));
-
-    // ── NUCLEAR TEST MODE — top of handler, no auth, no DB ───────────────────
-    // If body.test === true, skip ALL auth, DB queries, and thresholds.
-    // Immediately build a mock email and send it. Always succeeds.
-    if (body.test === true) {
-      const toEmail: string = body.email || '';
-      if (!toEmail) {
-        return jsonRes(400, { error: 'Test mode requires an email address in the request body.' });
-      }
-
-      console.log('TEST MODE: Bypassing DB and sending mock email');
-      const effectiveThreshold: number = body.threshold ?? 80;
-      const displayName: string = body.display_name || '';
-      const dateStr = new Date().toLocaleDateString('en-US', {
-        weekday: 'long', month: 'long', day: 'numeric',
-      });
-
-      const html = buildEmailHtml({
-        displayName, dateStr, matches: MOCK_MATCHES as any[],
-        effectiveThreshold, totalFetched: 0, isNoMatches: false, usedMockData: true,
-      });
-      const subjectLine = buildSubject(displayName, MOCK_MATCHES.length, true, true, dateStr);
-
-      console.log(`TEST MODE: Sending mock email to ${toEmail} — "${subjectLine}"`);
-      const resendRes = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: RESEND_FROM, to: [toEmail], subject: subjectLine, html }),
-      });
-      const resendData = await resendRes.json();
-      console.log(`TEST MODE: Resend API ${resendRes.status}: ${JSON.stringify(resendData)}`);
-
-      if (!resendRes.ok) {
-        return jsonRes(resendRes.status, { error: 'Resend API error', details: resendData });
-      }
-
-      return jsonRes(200, {
-        success: true,
-        emailId: resendData.id,
-        sentTo: toEmail,
-        matchCount: MOCK_MATCHES.length,
-        threshold: effectiveThreshold,
-        highestScore: 97,
-        isTest: true,
-        usedMockData: true,
-      });
-    }
-
-    // ── Authenticated paths (cron / service-role / user JWT) ─────────────────
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return jsonRes(401, { error: 'Missing Authorization header' });
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
-    const isDiagnostic = body.check === true;
-    // Trim the prefix case-insensitively and strip any surrounding whitespace.
-    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-
-    // ── Service-role path ────────────────────────────────────────────────────
-    // isServiceRoleToken handles both the raw key string AND a signed JWT that
-    // carries { role: "service_role" } in its payload (what pg_cron sends).
-    // We skip auth.getUser() entirely here — the cron has no user profile.
-    if (isServiceRoleToken(token, serviceRoleKey)) {
-      console.log('Auth check: Service Role detected');
-      if (!body.user_id) {
-        console.log('Function started by: service_role (cron broadcast)');
-        const results = await processAllUsers(supabase, RESEND_API_KEY, RESEND_FROM, isDiagnostic);
-        return jsonRes(200, { processed: results.length, results });
-      }
-      console.log(`Function started by: service_role for user ${body.user_id}`);
-      const result = await sendDigestForUser(
-        supabase, body.user_id, body.email, body,
-        RESEND_API_KEY, RESEND_FROM, isDiagnostic, undefined, false,
-      );
-      return jsonRes(result.status, result.data);
-    }
-
-    // ── User JWT path ────────────────────────────────────────────────────────
-    // Only reached for real user JWTs. auth.getUser() validates the token and
-    // returns the user's profile; service-role tokens never reach this branch.
-    const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
-    if (userError || !user) return jsonRes(401, { error: 'Unauthorized' });
-
-    console.log(`Function started by: ${user.id} (user JWT)`);
-    const result = await sendDigestForUser(
-      supabase, user.id, user.email, body,
-      RESEND_API_KEY, RESEND_FROM, isDiagnostic, undefined, false,
-    );
-    return jsonRes(result.status, result.data);
-
-  } catch (err: any) {
-    console.error('Unhandled error:', err);
-    return jsonRes(500, { error: err.message || 'Internal server error' });
+function buildSubject(
+  name: string,
+  matchCount: number,
+  isTest: boolean,
+  usedMockData: boolean,
+): string {
+  const prefix = name ? `${name} — ` : '';
+  if (isTest && usedMockData) {
+    return `${prefix}🎯 Daily Scout: Test preview (${matchCount} mock matches)`;
   }
-});
+  if (matchCount === 0) {
+    return `${prefix}🎯 Daily Scout: No new matches today`;
+  }
+  return `${prefix}🎯 Daily Scout: ${matchCount} match${matchCount !== 1 ? 'es' : ''} found`;
+}
 
-// ── Broadcast: iterate every automation-enabled user ────────────────────────
+// ── Premium email HTML (fully inline CSS for Gmail/Outlook) ──────────────────
+
+function buildEmailHtml(opts: {
+  displayName: string;
+  dateStr: string;
+  matches: any[];
+  effectiveThreshold: number;
+  totalFetched: number;
+  isNoMatches: boolean;
+  usedMockData: boolean;
+}): string {
+  const { displayName, dateStr, matches, effectiveThreshold, totalFetched, isNoMatches, usedMockData } = opts;
+  const greeting = displayName ? `Good morning, ${escapeHtml(displayName)}!` : 'Good morning!';
+
+  const jobCards = matches.map((m: any) => {
+    const scoreDisplay = `${m.score}% Match`;
+    const sourceLabel = m.source
+      ? `<span style="display:inline-block;background:#f0fdf4;color:#16a34a;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;margin-left:6px;">${escapeHtml(m.source)}</span>`
+      : '';
+    return `
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;margin-bottom:12px;overflow:hidden;">
+      <tr>
+        <td style="padding:20px 24px;">
+          <table cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
+            <tr>
+              <td>
+                <span style="display:inline-block;background:rgba(17,204,245,0.15);color:#0891b2;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:0.03em;">${scoreDisplay}</span>
+                ${sourceLabel}
+              </td>
+            </tr>
+          </table>
+          <div style="font-size:18px;font-weight:800;color:#11ccf5;line-height:1.3;margin-bottom:4px;">${escapeHtml(m.title)}</div>
+          <div style="font-size:13px;color:#64748b;margin-bottom:16px;">${escapeHtml(m.company)}&nbsp;·&nbsp;${escapeHtml(m.location || 'Remote')}</div>
+          <a href="${escapeHtml(m.link && m.link !== '#' ? m.link : 'https://mycareerbrain.app')}"
+             style="display:inline-block;background:#11ccf5;color:#0f172a;padding:10px 24px;border-radius:12px;font-size:13px;font-weight:800;text-decoration:none;letter-spacing:0.02em;">
+            View Job &rarr;
+          </a>
+        </td>
+      </tr>
+    </table>`;
+  }).join('\n');
+
+  const noMatchesBody = `
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;margin-bottom:12px;">
+      <tr>
+        <td style="padding:36px 28px;text-align:center;">
+          <div style="font-size:48px;margin-bottom:12px;">🔍</div>
+          <p style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 8px 0;">Nothing above your bar today.</p>
+          <p style="font-size:14px;color:#64748b;margin:0;line-height:1.6;">
+            We scanned <strong>${totalFetched}</strong> job${totalFetched !== 1 ? 's' : ''} for you today, but nothing
+            hit your <strong>${effectiveThreshold}%</strong> match score.<br>We&rsquo;ll try again tomorrow!
+          </p>
+        </td>
+      </tr>
+    </table>`;
+
+  const mockBanner = usedMockData ? `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+      <tr>
+        <td style="background:#fff8e1;border:1px solid #ffd54f;border-radius:12px;padding:10px 16px;text-align:center;">
+          <span style="font-size:12px;color:#b45309;font-weight:700;">⚠️ TEST MODE — Showing mock data. Real jobs will appear once you run a scan.</span>
+        </td>
+      </tr>
+    </table>` : '';
+
+  const mainBody = isNoMatches ? noMatchesBody : `${mockBanner}${jobCards}`;
+  const matchCountLine = isNoMatches
+    ? `Scanned ${totalFetched} listings · nothing cleared ${effectiveThreshold}%`
+    : `${matches.length} match${matches.length !== 1 ? 'es' : ''} above ${effectiveThreshold}%${usedMockData ? ' (preview)' : ''}`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>MyCareerBrain Digest</title>
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="background:linear-gradient(135deg,#30003b 0%,#1a0024 100%);padding:36px 28px 28px;text-align:center;">
+              <img src="${LOGO_URL}" alt="MyCareerBrain" width="160"
+                   style="max-width:180px;height:auto;display:block;margin:0 auto 20px;border:0;"
+                   onerror="this.style.display='none'">
+              <h1 style="margin:0 0 6px;color:#ffffff;font-size:24px;font-weight:800;line-height:1.2;">${greeting}</h1>
+              <p style="margin:0 0 4px;color:rgba(255,255,255,0.85);font-size:15px;font-weight:500;">Your Daily Job Digest</p>
+              <p style="margin:0;color:rgba(17,204,245,0.9);font-size:13px;font-weight:600;">${dateStr} &nbsp;·&nbsp; ${matchCountLine}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 24px 8px;">
+              ${mainBody}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 28px 28px;text-align:center;border-top:1px solid #f1f5f9;">
+              <p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#0f172a;letter-spacing:0.01em;">
+                Stop scrolling. Start matching.
+              </p>
+              <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">
+                <a href="https://mycareerbrain.app" style="color:#30003b;text-decoration:none;font-weight:600;">Manage your settings</a>
+                &nbsp;&middot;&nbsp;
+                <a href="https://mycareerbrain.app" style="color:#94a3b8;text-decoration:none;">Unsubscribe</a>
+              </p>
+              <p style="margin:0;font-size:11px;color:#cbd5e1;">
+                Sent by MyCareerBrain &middot; Maria Alejandra Diaz Linde &middot; Stuttgart, Germany
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+// ── Broadcast: iterate every automation-enabled user ─────────────────────────
+
 async function processAllUsers(
   supabase: ReturnType<typeof createClient>,
   resendApiKey: string,
   resendFrom: string,
   isDiagnostic: boolean,
+  dateStr: string,
 ) {
   console.log('--- CRON RUN STARTED ---');
 
@@ -239,7 +272,8 @@ async function processAllUsers(
       timeZone: tz, hour: 'numeric', hourCycle: 'h23',
     }).formatToParts(now);
     const currentHour = parseInt(
-      (parts.find((p: Intl.DateTimeFormatPart) => p.type === 'hour') ?? { value: '0' }).value, 10,
+      (parts.find((p: Intl.DateTimeFormatPart) => p.type === 'hour') ?? { value: '0' }).value,
+      10,
     );
 
     // NOTE: Time check temporarily disabled to verify cron invocation.
@@ -252,14 +286,16 @@ async function processAllUsers(
 
     console.log(`Processing digest for ${s.user_id} (current hour: ${currentHour}:xx in ${tz})`);
     const result = await sendDigestForUser(
-      supabase, s.user_id, s.digest_email, {}, resendApiKey, resendFrom, isDiagnostic, s, false,
+      supabase, s.user_id, s.digest_email, {}, resendApiKey, resendFrom, isDiagnostic, dateStr, s, false,
     );
     results.push({ userId: s.user_id, status: result.status, ...(result.data as object) });
   }
+
   return results;
 }
 
-// ── Core digest logic for one user ──────────────────────────────────────────
+// ── Core digest logic for one user ───────────────────────────────────────────
+
 async function sendDigestForUser(
   supabase: ReturnType<typeof createClient>,
   userId: string,
@@ -268,11 +304,12 @@ async function sendDigestForUser(
   resendApiKey: string,
   resendFrom: string,
   isDiagnostic: boolean,
+  dateStr: string,
   preloadedSettings?: Record<string, any>,
   isTest = false,
 ): Promise<{ status: number; data: unknown }> {
 
-  // ── 1. Load settings (always needed for recipient email + display name) ─────
+  // ── 1. Load settings ────────────────────────────────────────────────────────
   let settings = preloadedSettings;
   if (!settings) {
     const { data, error } = await supabase
@@ -290,13 +327,7 @@ async function sendDigestForUser(
   const effectiveThreshold: number = body.threshold ?? settings.match_threshold ?? 80;
   const displayName: string = settings.display_name || '';
 
-  const dateStr = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric',
-  });
-
-  // ── 2. TEST FAST-PATH — fires immediately, before any time-filtered query ───
-  //    Tries to load real DB matches (no time filter, no threshold gate).
-  //    Falls back to MOCK_MATCHES when DB is empty so the email is always sent.
+  // ── 2. TEST FAST-PATH ────────────────────────────────────────────────────────
   if (isTest) {
     console.log('TEST FAST-PATH: engaged — skipping time filter and threshold gate');
 
@@ -345,37 +376,37 @@ async function sendDigestForUser(
       };
     }
 
-    const html = buildEmailHtml({
+    const testHtml = buildEmailHtml({
       displayName, dateStr, matches, effectiveThreshold,
       totalFetched: normalized.length, isNoMatches: false, usedMockData,
     });
-    const subjectLine = buildSubject(displayName, matches.length, true, usedMockData, dateStr);
+    const testSubject = buildSubject(displayName, matches.length, true, usedMockData);
 
-    console.log(`TEST FAST-PATH: Sending to ${recipientEmail} — "${subjectLine}"`);
-    const resendRes = await fetch('https://api.resend.com/emails', {
+    console.log(`TEST FAST-PATH: Sending to ${recipientEmail} — "${testSubject}"`);
+    const testResendRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: resendFrom, to: [recipientEmail], subject: subjectLine, html }),
+      body: JSON.stringify({ from: resendFrom, to: [recipientEmail], subject: testSubject, html: testHtml }),
     });
-    const resendData = await resendRes.json();
-    console.log(`Resend API ${resendRes.status}: ${JSON.stringify(resendData)}`);
+    const testResendData = await testResendRes.json();
+    console.log(`Resend API ${testResendRes.status}: ${JSON.stringify(testResendData)}`);
 
-    if (!resendRes.ok) {
-      return { status: resendRes.status, data: { error: 'Resend API error', details: resendData } };
+    if (!testResendRes.ok) {
+      return { status: testResendRes.status, data: { error: 'Resend API error', details: testResendData } };
     }
 
     console.log('TEST FAST-PATH: last_digest_sent_at NOT updated (test run)');
     return {
       status: 200,
       data: {
-        success: true, emailId: resendData.id, sentTo: recipientEmail,
+        success: true, emailId: testResendData.id, sentTo: recipientEmail,
         matchCount: matches.length, threshold: effectiveThreshold,
         highestScore, isTest: true, usedMockData,
       },
     };
   }
 
-  // ── 3. Real automated path (isTest=false) ────────────────────────────────
+  // ── 3. Real automated path ───────────────────────────────────────────────────
   const lastSent: string | null = settings.last_digest_sent_at ?? null;
   const since = lastSent
     ? new Date(lastSent).toISOString()
@@ -395,7 +426,7 @@ async function sendDigestForUser(
     return { status: 500, data: { error: 'Failed to load matches', details: matchError.message } };
   }
 
-  // ── 4. Normalize scores & apply threshold ─────────────────────────────────
+  // ── 4. Normalize scores & apply threshold ────────────────────────────────────
   const normalized = (rawMatches ?? []).map((m: any) => {
     const rawScore = m.score;
     const normalizedScore = normalizeScore(rawScore);
@@ -414,7 +445,7 @@ async function sendDigestForUser(
 
   console.log(`totalFetched: ${totalFetched} | highestScore: ${highestScore} | matchesForEmail: ${matches.length}`);
 
-  // ── 5. Diagnostic mode ────────────────────────────────────────────────────
+  // ── 5. Diagnostic mode ────────────────────────────────────────────────────────
   if (isDiagnostic) {
     return {
       status: 200,
@@ -430,7 +461,7 @@ async function sendDigestForUser(
     };
   }
 
-  // ── 6. Build branded email (handles both matches and zero-matches) ──────────
+  // ── 6. Build email (zero-matches sends the branded "No Matches" email) ────────
   const isNoMatches = matches.length === 0;
   console.log(`isNoMatches: ${isNoMatches} — sending ${isNoMatches ? '"No Matches" safety email' : `${matches.length} match(es)`}`);
 
@@ -438,21 +469,16 @@ async function sendDigestForUser(
     displayName, dateStr, matches, effectiveThreshold,
     totalFetched, isNoMatches, usedMockData: false,
   });
-  const subjectLine = buildSubject(displayName, matches.length, false, false, dateStr);
+  const subject = buildSubject(displayName, matches.length, false, false);
 
-  // ── 7. Send via Resend ────────────────────────────────────────────────────
+  // ── 7. Send via Resend ────────────────────────────────────────────────────────
   const resendRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${resendApiKey}`,
+      Authorization: `Bearer ${resendApiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      from: resendFrom,
-      to: [recipientEmail],
-      subject: subjectLine,
-      html,
-    }),
+    body: JSON.stringify({ from: resendFrom, to: [recipientEmail], subject, html }),
   });
   const resendData = await resendRes.json();
   console.log(`Resend API ${resendRes.status}: ${JSON.stringify(resendData)}`);
@@ -461,7 +487,7 @@ async function sendDigestForUser(
     return { status: resendRes.status, data: { error: 'Resend API error', details: resendData } };
   }
 
-  // Stamp last_digest_sent_at on real automated runs
+  // Stamp last_digest_sent_at so this user isn't emailed again in the same window
   await supabase
     .from('user_settings')
     .update({ last_digest_sent_at: new Date().toISOString() })
@@ -478,178 +504,108 @@ async function sendDigestForUser(
   };
 }
 
-// ── Email subject line ───────────────────────────────────────────────────────
-function buildSubject(
-  name: string, matchCount: number, isTest: boolean,
-  usedMockData: boolean, _dateStr: string,
-): string {
-  const prefix = name ? `${name} — ` : '';
-  if (isTest && usedMockData) {
-    return `${prefix}🎯 Daily Scout: Test preview (${matchCount} mock matches)`;
+// ── Request handler ───────────────────────────────────────────────────────────
+
+serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  // Single dateStr declaration — shared by every path in this handler.
+  const dateStr = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric',
+  });
+
+  try {
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
+
+    if (!RESEND_API_KEY) {
+      return jsonRes(500, {
+        error: 'RESEND_API_KEY not configured. Run: supabase secrets set RESEND_API_KEY=re_...',
+      });
+    }
+
+    const body = await req.json().catch(() => ({}));
+
+    // ── NUCLEAR TEST MODE — no auth, no DB, always sends ─────────────────────
+    if (body.test === true) {
+      const toEmail: string = body.email || '';
+      if (!toEmail) {
+        return jsonRes(400, { error: 'Test mode requires an email address in the request body.' });
+      }
+
+      console.log('TEST MODE: Bypassing DB and sending mock email');
+      const effectiveThreshold: number = body.threshold ?? 80;
+      const displayName: string = body.display_name || '';
+
+      const html = buildEmailHtml({
+        displayName, dateStr, matches: MOCK_MATCHES as any[],
+        effectiveThreshold, totalFetched: 0, isNoMatches: false, usedMockData: true,
+      });
+      const subjectLine = buildSubject(displayName, MOCK_MATCHES.length, true, true);
+
+      console.log(`TEST MODE: Sending mock email to ${toEmail} — "${subjectLine}"`);
+      const resendRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: RESEND_FROM, to: [toEmail], subject: subjectLine, html }),
+      });
+      const resendData = await resendRes.json();
+      console.log(`TEST MODE: Resend API ${resendRes.status}: ${JSON.stringify(resendData)}`);
+
+      if (!resendRes.ok) {
+        return jsonRes(resendRes.status, { error: 'Resend API error', details: resendData });
+      }
+
+      return jsonRes(200, {
+        success: true, emailId: resendData.id, sentTo: toEmail,
+        matchCount: MOCK_MATCHES.length, threshold: effectiveThreshold,
+        highestScore: 97, isTest: true, usedMockData: true,
+      });
+    }
+
+    // ── Authenticated paths (cron / service-role / user JWT) ──────────────────
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return jsonRes(401, { error: 'Missing Authorization header' });
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const isDiagnostic = body.check === true;
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    // ── Service-role path — skip auth.getUser(), cron has no user profile ─────
+    if (isServiceRoleToken(token, serviceRoleKey)) {
+      console.log('Auth check: Service Role detected');
+      if (!body.user_id) {
+        console.log('Function started by: service_role (cron broadcast)');
+        const results = await processAllUsers(supabase, RESEND_API_KEY, RESEND_FROM, isDiagnostic, dateStr);
+        return jsonRes(200, { processed: results.length, results });
+      }
+      console.log(`Function started by: service_role for user ${body.user_id}`);
+      const result = await sendDigestForUser(
+        supabase, body.user_id, body.email, body,
+        RESEND_API_KEY, RESEND_FROM, isDiagnostic, dateStr, undefined, false,
+      );
+      return jsonRes(result.status, result.data);
+    }
+
+    // ── User JWT path — validate token and get user profile ───────────────────
+    const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+    if (userError || !user) return jsonRes(401, { error: 'Unauthorized' });
+
+    console.log(`Function started by: ${user.id} (user JWT)`);
+    const result = await sendDigestForUser(
+      supabase, user.id, user.email, body,
+      RESEND_API_KEY, RESEND_FROM, isDiagnostic, dateStr, undefined, false,
+    );
+    return jsonRes(result.status, result.data);
+
+  } catch (err: any) {
+    console.error('Unhandled error:', err);
+    return jsonRes(500, { error: err.message || 'Internal server error' });
   }
-  if (matchCount === 0) {
-    return `${prefix}🎯 Daily Scout: No new matches today`;
-  }
-  return `${prefix}🎯 Daily Scout: ${matchCount} match${matchCount !== 1 ? 'es' : ''} found`;
-}
-
-// ── Premium email HTML (fully inline CSS for Gmail/Outlook) ─────────────────
-function buildEmailHtml(opts: {
-  displayName: string;
-  dateStr: string;
-  matches: any[];
-  effectiveThreshold: number;
-  totalFetched: number;
-  isNoMatches: boolean;
-  usedMockData: boolean;
-}): string {
-  const { displayName, dateStr, matches, effectiveThreshold, totalFetched, isNoMatches, usedMockData } = opts;
-  const greeting = displayName ? `Good morning, ${escapeHtml(displayName)}!` : 'Good morning!';
-
-  // ── Job cards ──────────────────────────────────────────────────────────────
-  const jobCards = matches.map((m: any) => {
-    const scoreDisplay = `${m.score}% Match`;
-    const sourceLabel = m.source
-      ? `<span style="display:inline-block;background:#f0fdf4;color:#16a34a;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;margin-left:6px;">${escapeHtml(m.source)}</span>`
-      : '';
-    return `
-    <!-- Job Card -->
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;margin-bottom:12px;overflow:hidden;">
-      <tr>
-        <td style="padding:20px 24px;">
-          <!-- Score badge row -->
-          <table cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
-            <tr>
-              <td>
-                <span style="display:inline-block;background:rgba(17,204,245,0.15);color:#0891b2;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:0.03em;">${scoreDisplay}</span>
-                ${sourceLabel}
-              </td>
-            </tr>
-          </table>
-          <!-- Title -->
-          <div style="font-size:18px;font-weight:800;color:#11ccf5;line-height:1.3;margin-bottom:4px;">${escapeHtml(m.title)}</div>
-          <!-- Company · Location -->
-          <div style="font-size:13px;color:#64748b;margin-bottom:16px;">${escapeHtml(m.company)}&nbsp;·&nbsp;${escapeHtml(m.location || 'Remote')}</div>
-          <!-- View button -->
-          <a href="${escapeHtml(m.link && m.link !== '#' ? m.link : 'https://mycareerbrain.app')}"
-             style="display:inline-block;background:#11ccf5;color:#0f172a;padding:10px 24px;border-radius:12px;font-size:13px;font-weight:800;text-decoration:none;letter-spacing:0.02em;">
-            View Job &rarr;
-          </a>
-        </td>
-      </tr>
-    </table>`;
-  }).join('\n');
-
-  // ── No-matches body (real cron run, nothing above threshold) ───────────────
-  const noMatchesBody = `
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;margin-bottom:12px;">
-      <tr>
-        <td style="padding:36px 28px;text-align:center;">
-          <div style="font-size:48px;margin-bottom:12px;">🔍</div>
-          <p style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 8px 0;">Nothing above your bar today.</p>
-          <p style="font-size:14px;color:#64748b;margin:0;line-height:1.6;">
-            We scanned <strong>${totalFetched}</strong> job${totalFetched !== 1 ? 's' : ''} for you today, but nothing
-            hit your <strong>${effectiveThreshold}%</strong> match score.<br>We&rsquo;ll try again tomorrow!
-          </p>
-        </td>
-      </tr>
-    </table>`;
-
-  // ── Mock banner ───────────────────────────────────────────────────────────
-  const mockBanner = usedMockData ? `
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
-      <tr>
-        <td style="background:#fff8e1;border:1px solid #ffd54f;border-radius:12px;padding:10px 16px;text-align:center;">
-          <span style="font-size:12px;color:#b45309;font-weight:700;">⚠️ TEST MODE — Showing mock data. Real jobs will appear once you run a scan.</span>
-        </td>
-      </tr>
-    </table>` : '';
-
-  const mainBody = isNoMatches ? noMatchesBody : `${mockBanner}${jobCards}`;
-  const matchCountLine = isNoMatches
-    ? `Scanned ${totalFetched} listings · nothing cleared ${effectiveThreshold}%`
-    : `${matches.length} match${matches.length !== 1 ? 'es' : ''} above ${effectiveThreshold}%${usedMockData ? ' (preview)' : ''}`;
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <title>MyCareerBrain Digest</title>
-</head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
-
-  <!-- Outer wrapper -->
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
-    <tr>
-      <td align="center">
-
-        <!-- Email card -->
-        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,0.08);">
-
-          <!-- ── HEADER ── -->
-          <tr>
-            <td style="background:linear-gradient(135deg,#30003b 0%,#1a0024 100%);padding:36px 28px 28px;text-align:center;">
-              <!-- Logo -->
-              <img src="${LOGO_URL}"
-                   alt="MyCareerBrain"
-                   width="160"
-                   style="max-width:180px;height:auto;display:block;margin:0 auto 20px;border:0;"
-                   onerror="this.style.display='none'">
-              <!-- Greeting -->
-              <h1 style="margin:0 0 6px;color:#ffffff;font-size:24px;font-weight:800;line-height:1.2;">${greeting}</h1>
-              <!-- Subtitle -->
-              <p style="margin:0 0 4px;color:rgba(255,255,255,0.85);font-size:15px;font-weight:500;">Your Daily Job Digest</p>
-              <!-- Date + match count -->
-              <p style="margin:0;color:rgba(17,204,245,0.9);font-size:13px;font-weight:600;">${dateStr} &nbsp;·&nbsp; ${matchCountLine}</p>
-            </td>
-          </tr>
-
-          <!-- ── BODY ── -->
-          <tr>
-            <td style="padding:24px 24px 8px;">
-              ${mainBody}
-            </td>
-          </tr>
-
-          <!-- ── FOOTER ── -->
-          <tr>
-            <td style="padding:20px 28px 28px;text-align:center;border-top:1px solid #f1f5f9;">
-              <!-- Tagline -->
-              <p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#0f172a;letter-spacing:0.01em;">
-                Stop scrolling. Start matching.
-              </p>
-              <!-- Links -->
-              <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">
-                <a href="https://mycareerbrain.app" style="color:#30003b;text-decoration:none;font-weight:600;">Manage your settings</a>
-                &nbsp;&middot;&nbsp;
-                <a href="https://mycareerbrain.app" style="color:#94a3b8;text-decoration:none;">Unsubscribe</a>
-              </p>
-              <!-- Legal -->
-              <p style="margin:0;font-size:11px;color:#cbd5e1;">
-                Sent by MyCareerBrain &middot; Maria Alejandra Diaz Linde &middot; Stuttgart, Germany
-              </p>
-            </td>
-          </tr>
-
-        </table>
-        <!-- /Email card -->
-
-      </td>
-    </tr>
-  </table>
-  <!-- /Outer wrapper -->
-
-</body>
-</html>`;
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function escapeHtml(str: string): string {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+});
