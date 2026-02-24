@@ -184,9 +184,11 @@ async function processAllUsers(
   resendFrom: string,
   isDiagnostic: boolean,
 ) {
+  console.log('--- CRON RUN STARTED ---');
+
   const { data: allSettings, error: settingsError } = await supabase
     .from('user_settings')
-    .select('user_id, digest_email, match_threshold, last_digest_sent_at, timezone, display_name')
+    .select('user_id, digest_email, match_threshold, last_digest_sent_at, timezone, display_name, automation_enabled')
     .eq('automation_enabled', true)
     .not('digest_email', 'is', null);
 
@@ -208,13 +210,15 @@ async function processAllUsers(
       (parts.find((p: Intl.DateTimeFormatPart) => p.type === 'hour') ?? { value: '0' }).value, 10,
     );
 
-    if (currentHour !== 8) {
-      console.log(`Skipping user ${s.user_id}: ${currentHour}:xx in ${tz} (need 8:xx)`);
-      results.push({ userId: s.user_id, skipped: true, reason: `Not 8 AM in ${tz}` });
-      continue;
-    }
+    // NOTE: Time check temporarily disabled to verify cron invocation.
+    // Re-enable by un-commenting the block below once confirmed working.
+    // if (currentHour !== 8) {
+    //   console.log(`Skipping user ${s.user_id}: ${currentHour}:xx in ${tz} (need 8:xx)`);
+    //   results.push({ userId: s.user_id, skipped: true, reason: `Not 8 AM in ${tz}` });
+    //   continue;
+    // }
 
-    console.log(`Processing digest for ${s.user_id} (8 AM in ${tz})`);
+    console.log(`Processing digest for ${s.user_id} (current hour: ${currentHour}:xx in ${tz})`);
     const result = await sendDigestForUser(
       supabase, s.user_id, s.digest_email, {}, resendApiKey, resendFrom, isDiagnostic, s, false,
     );
@@ -394,70 +398,36 @@ async function sendDigestForUser(
     };
   }
 
-  // ── 6. Build premium email ────────────────────────────────────────────────────────
-const dateStr = new Date().toLocaleDateString('en-US', { 
-      weekday: 'long', month: 'long', day: 'numeric' 
-    });
+  // ── 6. Build branded email (handles both matches and zero-matches) ──────────
+  const isNoMatches = matches.length === 0;
+  console.log(`isNoMatches: ${isNoMatches} — sending ${isNoMatches ? '"No Matches" safety email' : `${matches.length} match(es)`}`);
 
-    const jobCards = matches.map((m: any) => `
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;margin-bottom:12px;">
-        <tr>
-          <td style="padding:20px 24px;">
-            <div style="background:rgba(17,204,245,0.15);color:#0891b2;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:10px;">
-              ${m.score}% Match
-            </div>
-            <div style="font-size:18px;font-weight:800;color:#11ccf5;margin-bottom:4px;font-family:sans-serif;">${m.title}</div>
-            <div style="font-size:13px;color:#64748b;margin-bottom:16px;">${m.company} · ${m.location || 'Remote'}</div>
-            <a href="${m.link || 'https://mycareerbrain.de'}" style="display:inline-block;background:#11ccf5;color:#0f172a;padding:10px 24px;border-radius:12px;font-size:13px;font-weight:800;text-decoration:none;">
-              View Job &rarr;
-            </a>
-          </td>
-        </tr>
-      </table>`).join('');
-
-    const premiumHtml = `
-      <!DOCTYPE html>
-      <html>
-      <body style="margin:0;padding:0;background:#f1f5f9;font-family:sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
-          <tr>
-            <td align="center">
-              <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,0.08);">
-                <tr>
-                  <td style="background:linear-gradient(135deg,#30003b 0%,#1a0024 100%);padding:36px;text-align:center;">
-                    <img src="https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/logo.png" width="160" style="margin-bottom:20px;display:block;margin-left:auto;margin-right:auto;">
-                    <h1 style="color:#ffffff;font-size:24px;margin:0;font-weight:800;">Good morning!</h1>
-                    <p style="color:#11ccf5;font-size:13px;font-weight:600;margin:10px 0 0;">${dateStr} · ${matches.length} Matches Found</p>
-                  </td>
-                </tr>
-                <tr><td style="padding:24px;">${jobCards}</td></tr>
-                <tr>
-                  <td style="padding:28px;text-align:center;border-top:1px solid #f1f5f9;">
-                    <p style="font-weight:700;color:#0f172a;margin-bottom:12px;">Stop scrolling. Start matching.</p>
-                    <p style="font-size:11px;color:#cbd5e1;">Sent by MyCareerBrain · Stuttgart, Germany</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>`;
+  const html = buildEmailHtml({
+    displayName, dateStr, matches, effectiveThreshold,
+    totalFetched, isNoMatches, usedMockData: false,
+  });
+  const subjectLine = buildSubject(displayName, matches.length, false, false, dateStr);
 
   // ── 7. Send via Resend ────────────────────────────────────────────────────
-const resendRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: RESEND_FROM,
-        to: [recipientEmail],
-        subject: `🎯 Daily Scout: ${matches.length} matches found`,
-        html: premiumHtml, // Using the new premium template
-      }),
-    });
+  const resendRes = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${resendApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: resendFrom,
+      to: [recipientEmail],
+      subject: subjectLine,
+      html,
+    }),
+  });
+  const resendData = await resendRes.json();
+  console.log(`Resend API ${resendRes.status}: ${JSON.stringify(resendData)}`);
+
+  if (!resendRes.ok) {
+    return { status: resendRes.status, data: { error: 'Resend API error', details: resendData } };
+  }
 
   // Stamp last_digest_sent_at on real automated runs
   await supabase
@@ -471,7 +441,7 @@ const resendRes = await fetch('https://api.resend.com/emails', {
     data: {
       success: true, emailId: resendData.id, sentTo: recipientEmail,
       matchCount: matches.length, threshold: effectiveThreshold,
-      highestScore, isTest: false, usedMockData: false,
+      highestScore, isNoMatches, isTest: false, usedMockData: false,
     },
   };
 }
