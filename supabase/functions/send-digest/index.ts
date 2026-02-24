@@ -240,6 +240,8 @@ function buildEmailHtml(opts: {
 </html>`;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 // ── Broadcast: iterate every automation-enabled user ─────────────────────────
 
 async function processAllUsers(
@@ -289,6 +291,7 @@ async function processAllUsers(
       supabase, s.user_id, s.digest_email, {}, resendApiKey, resendFrom, isDiagnostic, dateStr, s, false,
     );
     results.push({ userId: s.user_id, status: result.status, ...(result.data as object) });
+    await sleep(1000);
   }
 
   return results;
