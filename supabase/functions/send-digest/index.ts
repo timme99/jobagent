@@ -518,6 +518,9 @@ serve(async (req: Request) => {
   });
 
   try {
+    // Parse the body first so body.test can be checked before any auth logic.
+    const body = await req.json().catch(() => ({}));
+
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
     const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
 
@@ -527,9 +530,9 @@ serve(async (req: Request) => {
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-
-    // ── NUCLEAR TEST MODE — no auth, no DB, always sends ─────────────────────
+    // ── TEST MODE — VIP pass, no auth required ────────────────────────────────
+    // Must stay above the authHeader check so any logged-in user can trigger a
+    // preview email from the frontend without needing a service-role key.
     if (body.test === true) {
       const toEmail: string = body.email || '';
       if (!toEmail) {
