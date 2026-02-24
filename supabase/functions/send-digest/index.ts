@@ -96,7 +96,7 @@ serve(async (req: Request) => {
       console.log('TEST MODE: Bypassing DB and sending mock email');
       const effectiveThreshold: number = body.threshold ?? 80;
       const displayName: string = body.display_name || '';
-      const dateStr = new Date().toLocaleDateString('en-US', {
+      let dateStr = new Date().toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric',
       });
 
@@ -254,7 +254,7 @@ async function sendDigestForUser(
   const effectiveThreshold: number = body.threshold ?? settings.match_threshold ?? 80;
   const displayName: string = settings.display_name || '';
 
-  const dateStr = new Date().toLocaleDateString('en-US', {
+  dateStr = new Date().toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
   });
 
