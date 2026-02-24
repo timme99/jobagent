@@ -69,6 +69,19 @@ function normalizeScore(raw: number): number {
   return Math.round(raw);
 }
 
+// Detect a service-role credential regardless of how the cron presents it.
+// Supabase cron may send the raw SUPABASE_SERVICE_ROLE_KEY or a signed JWT
+// whose payload carries { role: "service_role" }. Both cases are covered.
+function isServiceRoleToken(token: string, serviceRoleKey: string): boolean {
+  if (token === serviceRoleKey) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload?.role === 'service_role';
+  } catch {
+    return false;
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -143,7 +156,11 @@ serve(async (req: Request) => {
     const token = authHeader.replace('Bearer ', '');
 
     // ── Service-role path ────────────────────────────────────────────────────
-    if (token === serviceRoleKey) {
+    // isServiceRoleToken handles both the raw key string AND a signed JWT that
+    // carries { role: "service_role" } in its payload (what pg_cron sends).
+    // We skip auth.getUser() entirely here — the cron has no user profile.
+    if (isServiceRoleToken(token, serviceRoleKey)) {
+      console.log('Auth check: Service Role detected');
       if (!body.user_id) {
         console.log('Function started by: service_role (cron broadcast)');
         const results = await processAllUsers(supabase, RESEND_API_KEY, RESEND_FROM, isDiagnostic);
@@ -158,6 +175,8 @@ serve(async (req: Request) => {
     }
 
     // ── User JWT path ────────────────────────────────────────────────────────
+    // Only reached for real user JWTs. auth.getUser() validates the token and
+    // returns the user's profile; service-role tokens never reach this branch.
     const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
       global: { headers: { Authorization: authHeader } },
     });
