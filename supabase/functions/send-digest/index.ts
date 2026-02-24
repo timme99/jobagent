@@ -70,14 +70,26 @@ function normalizeScore(raw: number): number {
 }
 
 // Detect a service-role credential regardless of how the cron presents it.
-// Supabase cron may send the raw SUPABASE_SERVICE_ROLE_KEY or a signed JWT
-// whose payload carries { role: "service_role" }. Both cases are covered.
+// Two cases are handled:
+//   A) The raw SUPABASE_SERVICE_ROLE_KEY string is sent as the bearer token.
+//   B) pg_cron sends a short-lived signed JWT whose payload has role=service_role.
+//      JWT segments are base64url-encoded (uses - and _ instead of + and /);
+//      atob() requires standard base64, so we convert before decoding.
 function isServiceRoleToken(token: string, serviceRoleKey: string): boolean {
+  // Case A — raw key equality
   if (token === serviceRoleKey) return true;
+  // Case B — JWT with service_role claim
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload?.role === 'service_role';
-  } catch {
+    const segment = token.split('.')[1];
+    if (!segment) return false;
+    // base64url → base64
+    const base64 = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
+    const role = payload?.role ?? payload?.app_metadata?.role ?? '';
+    console.log(`Auth check: JWT role claim = "${role}"`);
+    return role === 'service_role';
+  } catch (e) {
+    console.log(`Auth check: JWT decode failed (${e}) — not a service-role token`);
     return false;
   }
 }
@@ -153,7 +165,8 @@ serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const isDiagnostic = body.check === true;
-    const token = authHeader.replace('Bearer ', '');
+    // Trim the prefix case-insensitively and strip any surrounding whitespace.
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
     // ── Service-role path ────────────────────────────────────────────────────
     // isServiceRoleToken handles both the raw key string AND a signed JWT that
