@@ -510,33 +510,43 @@ async function sendDigestForUser(
 // ── Request handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
-  // Single dateStr declaration — shared by every path in this handler.
-  const dateStr = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric',
-  });
+  // ── CORS preflight — always first, outside try/catch ─────────────────────────
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
 
   try {
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
 
-    if (!RESEND_API_KEY) {
-      return jsonRes(500, {
-        error: 'RESEND_API_KEY not configured. Run: supabase secrets set RESEND_API_KEY=re_...',
-      });
-    }
-
+    // ── Parse body first — no header or auth reads above this line ───────────
     const body = await req.json().catch(() => ({}));
 
-    // ── NUCLEAR TEST MODE — no auth, no DB, always sends ─────────────────────
+    // ── dateStr — single declaration for the entire request ─────────────────
+    const dateStr = new Date().toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric',
+    });
+
+    // ── TEST MODE — VIP pass ─────────────────────────────────────────────────
+    // Returns here immediately. Authorization header is NEVER read.
     if (body.test === true) {
-      const toEmail: string = body.email || '';
-      if (!toEmail) {
-        return jsonRes(400, { error: 'Test mode requires an email address in the request body.' });
+      const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+      const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
+      if (!RESEND_API_KEY) {
+        return new Response(
+          JSON.stringify({ error: 'RESEND_API_KEY not configured.' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
       }
 
-      console.log('TEST MODE: Bypassing DB and sending mock email');
+      const toEmail: string = body.email || '';
+      if (!toEmail) {
+        return new Response(
+          JSON.stringify({ error: 'Test mode requires an email address in the request body.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      console.log('TEST MODE: Bypassing auth and sending mock email');
       const effectiveThreshold: number = body.threshold ?? 80;
       const displayName: string = body.display_name || '';
 
@@ -546,29 +556,57 @@ serve(async (req: Request) => {
       });
       const subjectLine = buildSubject(displayName, MOCK_MATCHES.length, true, true);
 
-      console.log(`TEST MODE: Sending mock email to ${toEmail} — "${subjectLine}"`);
-      const resendRes = await fetch('https://api.resend.com/emails', {
+      console.log(`TEST MODE: Sending to ${toEmail} — "${subjectLine}"`);
+      const tRes = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: RESEND_FROM, to: [toEmail], subject: subjectLine, html }),
       });
-      const resendData = await resendRes.json();
-      console.log(`TEST MODE: Resend API ${resendRes.status}: ${JSON.stringify(resendData)}`);
+      const tData = await tRes.json();
+      console.log(`TEST MODE: Resend ${tRes.status}: ${JSON.stringify(tData)}`);
 
-      if (!resendRes.ok) {
-        return jsonRes(resendRes.status, { error: 'Resend API error', details: resendData });
+      if (!tRes.ok) {
+        return new Response(
+          JSON.stringify({ error: 'Resend API error', details: tData }),
+          { status: tRes.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
       }
 
-      return jsonRes(200, {
-        success: true, emailId: resendData.id, sentTo: toEmail,
-        matchCount: MOCK_MATCHES.length, threshold: effectiveThreshold,
-        highestScore: 97, isTest: true, usedMockData: true,
-      });
+      return new Response(
+        JSON.stringify({
+          success: true, emailId: tData.id, sentTo: toEmail,
+          matchCount: MOCK_MATCHES.length, threshold: effectiveThreshold,
+          highestScore: 97, isTest: true, usedMockData: true,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
-    // ── Authenticated paths (cron / service-role / user JWT) ──────────────────
+    // ── Method guard — non-test requests must be POST ────────────────────────
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ error: 'Please use POST with a JSON body.' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // ── Auth-required paths — only reachable when body.test !== true ─────────
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
+    if (!RESEND_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'RESEND_API_KEY not configured. Run: supabase secrets set RESEND_API_KEY=re_...' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return jsonRes(401, { error: 'Missing Authorization header' });
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing Authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -577,38 +615,56 @@ serve(async (req: Request) => {
     const isDiagnostic = body.check === true;
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-    // ── Service-role path — skip auth.getUser(), cron has no user profile ─────
+    // ── Service-role path — cron/broadcast, skip auth.getUser() ─────────────
     if (isServiceRoleToken(token, serviceRoleKey)) {
       console.log('Auth check: Service Role detected');
       if (!body.user_id) {
         console.log('Function started by: service_role (cron broadcast)');
         const results = await processAllUsers(supabase, RESEND_API_KEY, RESEND_FROM, isDiagnostic, dateStr);
-        return jsonRes(200, { processed: results.length, results });
+        return new Response(
+          JSON.stringify({ processed: results.length, results }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
       }
       console.log(`Function started by: service_role for user ${body.user_id}`);
-      const result = await sendDigestForUser(
+      const srResult = await sendDigestForUser(
         supabase, body.user_id, body.email, body,
         RESEND_API_KEY, RESEND_FROM, isDiagnostic, dateStr, undefined, false,
       );
-      return jsonRes(result.status, result.data);
+      return new Response(
+        JSON.stringify(srResult.data),
+        { status: srResult.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
-    // ── User JWT path — validate token and get user profile ───────────────────
+    // ── User JWT path — validate token, get user profile ────────────────────
     const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
-    if (userError || !user) return jsonRes(401, { error: 'Unauthorized' });
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
 
     console.log(`Function started by: ${user.id} (user JWT)`);
-    const result = await sendDigestForUser(
+    const jwtResult = await sendDigestForUser(
       supabase, user.id, user.email, body,
       RESEND_API_KEY, RESEND_FROM, isDiagnostic, dateStr, undefined, false,
     );
-    return jsonRes(result.status, result.data);
+    return new Response(
+      JSON.stringify(jwtResult.data),
+      { status: jwtResult.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
 
   } catch (err: any) {
     console.error('Unhandled error:', err);
-    return jsonRes(500, { error: err.message || 'Internal server error' });
+    return new Response(
+      JSON.stringify({ error: err.message || 'Internal server error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
   }
+
 });
