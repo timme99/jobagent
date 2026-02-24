@@ -519,28 +519,25 @@ serve(async (req: Request) => {
   });
 
   try {
-    // Parse the body first so body.test can be checked before any auth logic.
+    // ── Step 1: Parse body immediately — no auth logic above this line ─────────
     const body = await req.json().catch(() => ({}));
 
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
-
-    if (!RESEND_API_KEY) {
-      return jsonRes(500, {
-        error: 'RESEND_API_KEY not configured. Run: supabase secrets set RESEND_API_KEY=re_...',
-      });
-    }
-
-    // ── TEST MODE — VIP pass, no auth required ────────────────────────────────
-    // Must stay above the authHeader check so any logged-in user can trigger a
-    // preview email from the frontend without needing a service-role key.
+    // ── Step 2: TEST MODE — VIP pass, zero auth, returns before anything else ──
+    // Authorization header is never read inside this block.
+    // Any user clicking "Send Preview" on the frontend reaches this and exits.
     if (body.test === true) {
+      const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+      const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
+      if (!RESEND_API_KEY) {
+        return jsonRes(500, { error: 'RESEND_API_KEY not configured.' });
+      }
+
       const toEmail: string = body.email || '';
       if (!toEmail) {
         return jsonRes(400, { error: 'Test mode requires an email address in the request body.' });
       }
 
-      console.log('TEST MODE: Bypassing DB and sending mock email');
+      console.log('TEST MODE: Bypassing auth and sending mock email');
       const effectiveThreshold: number = body.threshold ?? 80;
       const displayName: string = body.display_name || '';
 
@@ -570,7 +567,15 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Authenticated paths (cron / service-role / user JWT) ──────────────────
+    // ── Step 3: All paths below here require auth — cron / service-role / JWT ──
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    const RESEND_FROM = Deno.env.get('RESEND_FROM') || 'Morning from MyCareerBrain <digest@mycareerbrain.de>';
+    if (!RESEND_API_KEY) {
+      return jsonRes(500, {
+        error: 'RESEND_API_KEY not configured. Run: supabase secrets set RESEND_API_KEY=re_...',
+      });
+    }
+
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return jsonRes(401, { error: 'Missing Authorization header' });
 
