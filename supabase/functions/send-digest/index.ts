@@ -397,7 +397,7 @@ async function sendDigestForUser(
   // ── 6. Build premium email ────────────────────────────────────────────────────────
 const dateStr = new Date().toLocaleDateString('en-US', { 
       weekday: 'long', month: 'long', day: 'numeric' 
-    });
+});
 
     const jobCards = matches.map((m: any) => `
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;margin-bottom:12px;">
