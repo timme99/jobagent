@@ -511,6 +511,7 @@ async function sendDigestForUser(
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') return jsonRes(405, { error: 'Please use POST with a JSON body.' });
 
   // Single dateStr declaration — shared by every path in this handler.
   const dateStr = new Date().toLocaleDateString('en-US', {
