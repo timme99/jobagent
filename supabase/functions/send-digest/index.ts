@@ -227,6 +227,9 @@ function buildEmailHtml(opts: {
                 &nbsp;&middot;&nbsp;
                 <a href="https://mycareerbrain.app" style="color:#94a3b8;text-decoration:none;">Unsubscribe</a>
               </p>
+              <p style="margin:0 0 8px;font-size:11px;color:#cbd5e1;font-style:italic;">
+                Note: Some links may expire. If a link fails, try searching for the Job Title and Company on Google.
+              </p>
               <p style="margin:0;font-size:11px;color:#cbd5e1;">
                 Sent by MyCareerBrain &middot; Maria Alejandra Diaz Linde &middot; Stuttgart, Germany
               </p>

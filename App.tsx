@@ -549,7 +549,7 @@ function AppContent() {
           </div>
         </header>
 
-        <div className="max-w-6xl mx-auto p-8 pb-20">
+        <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 pb-20">
           {view === 'profile' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
               <section className="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 group">
@@ -1347,11 +1347,11 @@ function JobCard({
             </div>
           </div>
 
-          <div className="mt-8 flex items-center gap-4">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             {onAccept && (
-              <button 
+              <button
                 onClick={(e) => { e.stopPropagation(); onAccept(); }}
-                className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
+                className="min-h-[44px] px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
                 style={{ background: '#11ccf5', color: '#30003b' }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#0db8d9')}
                 onMouseLeave={e => (e.currentTarget.style.background = '#11ccf5')}
@@ -1360,23 +1360,37 @@ function JobCard({
                 Save Match
               </button>
             )}
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); onDismiss?.(); }}
-              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isShortlisted ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+              className={`min-h-[44px] px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isShortlisted ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
             >
               <Trash2 size={14} />
               {isShortlisted ? 'Remove' : 'Dismiss'}
             </button>
-            <a 
-              href={match.link} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center gap-2"
-            >
-              <ExternalLink size={14} />
-              Original Post
-            </a>
+            {/* View + Google fallback — stacked on mobile, side-by-side on sm+ */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <a
+                href={match.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="min-h-[44px] px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+              >
+                <ExternalLink size={14} />
+                Original Post
+              </a>
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(match.title + ' ' + match.company + ' jobs')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="min-h-[44px] px-5 py-2.5 bg-slate-50 border border-slate-200 text-slate-400 rounded-xl text-xs font-bold hover:bg-slate-100 hover:text-slate-600 transition-all flex items-center justify-center gap-1.5"
+                title="Link not working? Search on Google"
+              >
+                <Search size={12} />
+                Search on Google
+              </a>
+            </div>
           </div>
         </div>
         
