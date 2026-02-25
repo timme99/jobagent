@@ -1,14 +1,31 @@
 // supabase/functions/fetch-jobs/index.ts
-// Server-side proxy for the Arbeitsagentur Jobsuche API.
-// Browsers cannot call rest.arbeitsagentur.de directly due to CORS.
-// This Edge Function runs on Deno (server side) so there is no CORS restriction.
+// "Hunter" Edge Function: fetches raw job listings from Bundesagentur für Arbeit (Phase 1)
+// and JSearch/RapidAPI (Phase 2), deduplicates against job_matches, and inserts new rows.
+//
+// Invocation modes:
+//   1. Service role key, no user_id  → pg_cron broadcast to all automation-enabled users
+//   2. Service role key + user_id    → targets a specific user
+//   3. User JWT                      → the authenticated user only
+//
+// Required Supabase secrets:
+//   JSEARCH_API_KEY  – RapidAPI key for JSearch (optional; BA-only if absent)
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const BA_API_URL = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';
+const BA_PAGE_SIZE = 25;
+// Supplement with JSearch when BA returns fewer results than this threshold.
+const JSEARCH_MIN_TRIGGER = 10;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function jsonRes(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -17,62 +34,320 @@ function jsonRes(status: number, body: unknown): Response {
   });
 }
 
+// Detect a service-role credential regardless of how the cron presents it.
+// Case A: the raw SUPABASE_SERVICE_ROLE_KEY string is used directly as the bearer token.
+// Case B: pg_cron sends a short-lived signed JWT whose payload has role=service_role.
+//         JWT segments are base64url-encoded; atob() needs standard base64, so convert first.
+function isServiceRoleToken(token: string, serviceRoleKey: string): boolean {
+  if (token === serviceRoleKey) return true;
+  try {
+    const segment = token.split('.')[1];
+    if (!segment) return false;
+    const base64 = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
+    const role = payload?.role ?? payload?.app_metadata?.role ?? '';
+    console.log(`Auth check: JWT role claim = "${role}"`);
+    return role === 'service_role';
+  } catch (e) {
+    console.log(`Auth check: JWT decode failed (${e}) — not a service-role token`);
+    return false;
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// ── Shared job shape ──────────────────────────────────────────────────────────
+
+interface NormalizedJob {
+  external_id: string;
+  title: string;
+  company: string;
+  location: string;
+  link: string;
+  source: string;
+}
+
+// ── Phase 1: Bundesagentur für Arbeit ────────────────────────────────────────
+
+async function fetchBAJobs(keywords: string, location: string): Promise<NormalizedJob[]> {
+  const params = new URLSearchParams({
+    was: keywords,
+    wo: location,
+    page: '1',
+    size: String(BA_PAGE_SIZE),
+  });
+
+  console.log(`[BA] Fetching: was="${keywords}" wo="${location}"`);
+
+  const res = await fetch(`${BA_API_URL}?${params}`, {
+    method: 'GET',
+    headers: { 'X-API-Key': 'jobboerse-jobsuche' },
+  });
+
+  if (!res.ok) {
+    console.error(`[BA] API error: ${res.status} ${res.statusText}`);
+    return [];
+  }
+
+  const data = await res.json();
+  const offers: any[] = data.stellenangebote ?? [];
+
+  console.log(`[BA] Received ${offers.length} result(s)`);
+
+  return offers.map((job: any) => {
+    const ort = [job.arbeitsort?.ort, job.arbeitsort?.region, job.arbeitsort?.land]
+      .filter(Boolean)
+      .join(', ');
+    return {
+      external_id: `aa-${job.hashId}`,
+      title: job.titel || job.beruf || 'Untitled Position',
+      company: job.arbeitgeber || 'Unknown Employer',
+      location: ort || 'Germany',
+      link: `https://www.arbeitsagentur.de/jobsuche/suche?id=${job.hashId}`,
+      source: 'arbeitsagentur',
+    };
+  });
+}
+
+// ── Phase 2: JSearch (RapidAPI) ──────────────────────────────────────────────
+
+async function fetchJSearchJobs(
+  keywords: string,
+  location: string,
+  jsearchApiKey: string,
+): Promise<NormalizedJob[]> {
+  const query = `${keywords} in ${location}`;
+  const params = new URLSearchParams({ query, page: '1', num_pages: '1' });
+
+  console.log(`[JSearch] Fetching: "${query}"`);
+
+  const res = await fetch(`https://jsearch.p.rapidapi.com/search?${params}`, {
+    method: 'GET',
+    headers: {
+      'X-RapidAPI-Key': jsearchApiKey,
+      'X-RapidAPI-Host': 'jsearch.p.rapidapi.com',
+    },
+  });
+
+  if (!res.ok) {
+    console.error(`[JSearch] API error: ${res.status} ${res.statusText}`);
+    return [];
+  }
+
+  const data = await res.json();
+  const jobs: any[] = (data.data ?? []).slice(0, 10);
+
+  console.log(`[JSearch] Received ${jobs.length} result(s)`);
+
+  return jobs.map((job: any) => {
+    const loc = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ');
+    return {
+      external_id: `js-${job.job_id}`,
+      title: job.job_title || 'Untitled Position',
+      company: job.employer_name || 'Unknown Company',
+      location: job.job_is_remote ? `Remote (${loc})` : loc || 'Not specified',
+      link: job.job_apply_link || job.job_google_link || '',
+      source: 'jsearch',
+    };
+  });
+}
+
+// ── Core: fetch & store jobs for one user ────────────────────────────────────
+
+async function fetchJobsForUser(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  jsearchApiKey: string | null,
+): Promise<{ inserted: number; skipped: number; errors: string[] }> {
+  const errors: string[] = [];
+
+  // 1. Load scan_keywords and scan_location from user_settings
+  const { data: settings, error: settingsError } = await supabase
+    .from('user_settings')
+    .select('scan_keywords, scan_location')
+    .eq('user_id', userId)
+    .single();
+
+  if (settingsError || !settings) {
+    const msg = `Failed to load settings for ${userId}: ${settingsError?.message ?? 'no row found'}`;
+    console.error(msg);
+    return { inserted: 0, skipped: 0, errors: [msg] };
+  }
+
+  const keywords: string = (settings.scan_keywords ?? '').trim();
+  const location: string = (settings.scan_location ?? 'Remote').trim() || 'Remote';
+
+  if (!keywords) {
+    console.log(`[${userId}] No scan_keywords configured — skipping`);
+    return { inserted: 0, skipped: 0, errors: [] };
+  }
+
+  // 2. Phase 1 — Bundesagentur für Arbeit
+  const baJobs = await fetchBAJobs(keywords, location);
+
+  // 3. Phase 2 — JSearch (only if BA didn't return enough results)
+  let jsearchJobs: NormalizedJob[] = [];
+  if (baJobs.length < JSEARCH_MIN_TRIGGER) {
+    if (jsearchApiKey) {
+      console.log(
+        `[${userId}] BA returned ${baJobs.length} < ${JSEARCH_MIN_TRIGGER} — supplementing with JSearch`,
+      );
+      jsearchJobs = await fetchJSearchJobs(keywords, location, jsearchApiKey);
+    } else {
+      console.log(
+        `[${userId}] BA returned ${baJobs.length} results but JSEARCH_API_KEY not set — skipping JSearch`,
+      );
+    }
+  }
+
+  const allJobs = [...baJobs, ...jsearchJobs];
+  console.log(
+    `[${userId}] Total candidates: ${allJobs.length} (BA: ${baJobs.length}, JSearch: ${jsearchJobs.length})`,
+  );
+
+  if (allJobs.length === 0) {
+    return { inserted: 0, skipped: 0, errors };
+  }
+
+  // 4. Deduplicate — check which links already exist for this user in job_matches
+  const candidateLinks = allJobs.map((j) => j.link).filter(Boolean);
+  const { data: existing, error: existingError } = await supabase
+    .from('job_matches')
+    .select('link')
+    .eq('user_id', userId)
+    .in('link', candidateLinks);
+
+  if (existingError) {
+    const msg = `Failed to query existing jobs for ${userId}: ${existingError.message}`;
+    console.error(msg);
+    errors.push(msg);
+    // Continue with best-effort deduplication (existingLinks will be empty)
+  }
+
+  const existingLinks = new Set((existing ?? []).map((r: any) => r.link));
+  const newJobs = allJobs.filter((j) => j.link && !existingLinks.has(j.link));
+  const skippedCount = allJobs.length - newJobs.length;
+
+  console.log(`[${userId}] New: ${newJobs.length} | Already in DB: ${skippedCount}`);
+
+  if (newJobs.length === 0) {
+    return { inserted: 0, skipped: skippedCount, errors };
+  }
+
+  // 5. Insert new rows — score starts at 0 (scoring happens in a separate step)
+  const rows = newJobs.map((job) => ({
+    user_id: userId,
+    title: job.title,
+    company: job.company,
+    location: job.location,
+    link: job.link,
+    source: job.source,
+    score: 0,
+    status: 'pending',
+    reasoning: { pros: [], cons: [], riskFactors: [] },
+    created_at: new Date().toISOString(),
+  }));
+
+  const { error: insertError } = await supabase.from('job_matches').insert(rows);
+
+  if (insertError) {
+    const msg = `Insert failed for ${userId}: ${insertError.message}`;
+    console.error(msg);
+    errors.push(msg);
+    return { inserted: 0, skipped: skippedCount, errors };
+  }
+
+  console.log(`[${userId}] Inserted ${rows.length} new job(s)`);
+  return { inserted: rows.length, skipped: skippedCount, errors };
+}
+
+// ── Broadcast: iterate all automation-enabled users ──────────────────────────
+
+async function processAllUsers(
+  supabase: ReturnType<typeof createClient>,
+  jsearchApiKey: string | null,
+): Promise<Record<string, unknown>[]> {
+  console.log('--- CRON RUN STARTED ---');
+
+  const { data: allSettings, error: settingsError } = await supabase
+    .from('user_settings')
+    .select('user_id')
+    .eq('automation_enabled', true);
+
+  if (settingsError) {
+    console.error('Failed to load user_settings:', settingsError.message);
+    return [{ error: 'Failed to load user_settings', details: settingsError.message }];
+  }
+
+  console.log(`Broadcast: ${allSettings?.length ?? 0} automation-enabled user(s)`);
+
+  const results: Record<string, unknown>[] = [];
+
+  for (const s of allSettings ?? []) {
+    const result = await fetchJobsForUser(supabase, s.user_id, jsearchApiKey);
+    results.push({ userId: s.user_id, ...result });
+    await sleep(500); // avoid thundering-herd on external APIs
+  }
+
+  return results;
+}
+
+// ── Request handler ───────────────────────────────────────────────────────────
+
 serve(async (req: Request) => {
+  // CORS preflight — always first, outside try/catch
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const { keywords = '', location = 'Remote' } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
 
-    if (!keywords) {
-      return jsonRes(400, { error: 'keywords is required' });
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const jsearchApiKey = Deno.env.get('JSEARCH_API_KEY') ?? null;
+
+    // Always use the service-role client for DB writes so RLS doesn't block inserts.
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return jsonRes(401, { error: 'Missing Authorization header' });
     }
 
-    // ── Arbeitsagentur Jobsuche API (public, no user key needed) ────────────
-    const params = new URLSearchParams({
-      was: keywords,
-      wo: location,
-      page: '1',
-      size: '10',
-    });
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-    console.log(`Fetching Arbeitsagentur jobs: was="${keywords}" wo="${location}"`);
+    // ── Service-role path — cron broadcast or targeted single user ────────────
+    if (isServiceRoleToken(token, serviceRoleKey)) {
+      console.log('Auth: service_role detected');
 
-    const aaRes = await fetch(
-      `https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs?${params}`,
-      {
-        method: 'GET',
-        headers: { 'X-API-Key': 'jobboerse-jobsuche' },
+      if (!body.user_id) {
+        // pg_cron broadcast — no user_id means run for all automation-enabled users
+        console.log('Mode: cron broadcast (all automation-enabled users)');
+        const results = await processAllUsers(supabase, jsearchApiKey);
+        return jsonRes(200, { processed: results.length, results });
       }
-    );
 
-    if (!aaRes.ok) {
-      console.error(`Arbeitsagentur API error: ${aaRes.status} ${aaRes.statusText}`);
-      // Return empty list rather than hard-failing the whole scan.
-      return jsonRes(200, { jobs: [], source: 'arbeitsagentur', error: `API ${aaRes.status}` });
+      // Targeted single-user invocation via service role
+      console.log(`Mode: service_role single user (${body.user_id})`);
+      const result = await fetchJobsForUser(supabase, body.user_id, jsearchApiKey);
+      return jsonRes(200, { userId: body.user_id, ...result });
     }
 
-    const data = await aaRes.json();
-    const stellenangebote: any[] = data.stellenangebote ?? [];
-
-    const jobs = stellenangebote.map((job: any) => {
-      const ort = [job.arbeitsort?.ort, job.arbeitsort?.region, job.arbeitsort?.land]
-        .filter(Boolean)
-        .join(', ');
-      return {
-        // No `id` field — Supabase will generate a UUID on insert.
-        // We keep a stable external reference for deduplication if needed later.
-        externalId: `aa-${job.hashId}`,
-        title: job.titel || job.beruf || 'Untitled Position',
-        company: job.arbeitgeber || 'Unknown Employer',
-        location: ort || 'Germany',
-        link: `https://www.arbeitsagentur.de/jobsuche/suche?id=${job.hashId}`,
-        description: `${job.beruf || ''}. Eintritt: ${job.eintrittsdatum || 'N/A'}. Ref: ${job.refnr || 'N/A'}`,
-        source: 'arbeitsagentur',
-      };
+    // ── User JWT path — validate token, scope to authenticated user ───────────
+    const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
     });
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseUser.auth.getUser();
 
-    console.log(`Returned ${jobs.length} Arbeitsagentur jobs`);
-    return jsonRes(200, { jobs });
+    if (userError || !user) {
+      return jsonRes(401, { error: 'Unauthorized' });
+    }
+
+    console.log(`Mode: user JWT (${user.id})`);
+    const result = await fetchJobsForUser(supabase, user.id, jsearchApiKey);
+    return jsonRes(200, { userId: user.id, ...result });
 
   } catch (err: any) {
     console.error('Unhandled error in fetch-jobs:', err);
