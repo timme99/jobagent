@@ -410,7 +410,7 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen flex bg-white selection:bg-[#11ccf5]/20 selection:text-[#30003b]">
+    <div className="h-screen flex overflow-hidden bg-white selection:bg-[#11ccf5]/20 selection:text-[#30003b]">
 
       {/* Mobile overlay backdrop — shown when sidebar is open on small screens */}
       {isSidebarOpen && (
@@ -423,7 +423,7 @@ function AppContent() {
       {/* Sidebar — fixed overlay on mobile, static column on desktop */}
       <aside
         className={`
-          fixed md:static top-0 bottom-0 left-0 z-30 flex flex-col shadow-2xl
+          fixed md:static top-0 bottom-0 left-0 z-30 flex flex-col shadow-2xl overflow-hidden
           transition-all duration-500 ease-in-out
           ${isSidebarOpen
             ? 'w-64 translate-x-0'
@@ -444,7 +444,7 @@ function AppContent() {
           )}
         </div>
 
-        <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <nav className="flex-1 min-h-0 px-4 space-y-2 mt-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
           <NavItem 
             icon={<User size={20}/>} 
             label="Master Profile" 
@@ -516,7 +516,7 @@ function AppContent() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative bg-white">
+      <main className="flex-1 min-h-0 overflow-y-auto relative bg-white">
         <header className="sticky top-0 z-10 glass border-b border-slate-200/60 px-4 md:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {/* Hamburger — mobile only */}
@@ -610,15 +610,11 @@ function AppContent() {
                   </div>
                 </div>
 
-                <div className="mt-10 flex items-center justify-between">
-                  <div className="flex gap-2">
-                    <div className="px-3 py-1.5 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500 uppercase tracking-wider">Quota-Optimized Engine</div>
-                    <div className="px-3 py-1.5 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500 uppercase tracking-wider">Zero-Cost Infra</div>
-                  </div>
+                <div className="mt-10">
                   <button
                     onClick={handleSynthesize}
                     disabled={isLoading || (!profileUrl.trim() && !cvText.trim())}
-                    className="group relative overflow-hidden px-10 py-4 rounded-2xl font-bold transition-all disabled:opacity-40 shadow-lg hover:-translate-y-1 flex items-center gap-3"
+                    className="group w-full sm:w-auto relative overflow-hidden px-10 min-h-[48px] rounded-2xl font-bold transition-all disabled:opacity-40 shadow-lg hover:-translate-y-1 flex items-center justify-center gap-3"
                     style={{ background: '#11ccf5', color: '#30003b' }}
                     onMouseEnter={e => !isLoading && (e.currentTarget.style.background = '#0db8d9')}
                     onMouseLeave={e => (e.currentTarget.style.background = '#11ccf5')}
@@ -856,7 +852,7 @@ function AppContent() {
             <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
 
               {/* ── Profile / Identity section ─────────────────────────────── */}
-              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+              <section className="bg-white p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <div className="flex items-center gap-4 mb-10">
                   <div className="p-4 rounded-2xl" style={{ background: 'rgba(48,0,59,0.06)', color: '#30003b' }}>
                     {getAvatarIcon(avatarIcon, 28)}
@@ -869,14 +865,14 @@ function AppContent() {
 
                 <div className="space-y-6">
                   {/* Display name */}
-                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                    <div className="flex-1 mr-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div>
                       <h4 className="font-bold text-slate-900">Display Name</h4>
                       <p className="text-xs text-slate-500">Used as the greeting in your morning digest email.</p>
                     </div>
                     <input
                       type="text"
-                      className="w-48 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
+                      className="w-full sm:w-48 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
                       placeholder="Your name"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
@@ -885,12 +881,12 @@ function AppContent() {
                   </div>
 
                   {/* Avatar picker */}
-                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
                     <div>
                       <h4 className="font-bold text-slate-900">Avatar Icon</h4>
                       <p className="text-xs text-slate-500">Shown in the sidebar and header.</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {AVATAR_OPTIONS.map(opt => (
                         <button
                           key={opt.id}
@@ -910,16 +906,19 @@ function AppContent() {
                   </div>
 
                   {/* Timezone */}
-                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
                     <div>
                       <h4 className="font-bold text-slate-900">Timezone</h4>
                       <p className="text-xs text-slate-500">Auto-detected · controls your 8:00 AM digest delivery.</p>
                     </div>
                     <select
-                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none cursor-pointer transition-all"
+                      className="w-full sm:w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none cursor-pointer transition-all"
                       value={timezone}
                       onChange={(e) => { setTimezone(e.target.value); db.saveSettings(userId, { timezone: e.target.value }); }}
                     >
+                      {!COMMON_TIMEZONES.some(tz => tz.value === timezone) && (
+                        <option value={timezone}>{timezone} (auto-detected)</option>
+                      )}
                       {COMMON_TIMEZONES.map(tz => (
                         <option key={tz.value} value={tz.value}>{tz.label}</option>
                       ))}
@@ -929,7 +928,7 @@ function AppContent() {
               </section>
 
               {/* ── Morning Digest section ─────────────────────────────────── */}
-               <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+               <section className="bg-white p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <div className="flex items-center gap-4 mb-10">
                   <div className="p-4 rounded-2xl" style={{ background: 'rgba(17,204,245,0.1)', color: '#30003b' }}><Mail size={28} /></div>
                   <div>
@@ -939,12 +938,12 @@ function AppContent() {
                 </div>
                 
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
                     <div>
                       <h4 className="font-bold text-slate-900">Enable Daily Scan</h4>
                       <p className="text-xs text-slate-500">MyCareerBrain will run every morning at 8:00 AM in your timezone.</p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
+                    <label className="relative inline-flex items-center cursor-pointer self-start sm:self-auto">
                       <input
                         type="checkbox"
                         className="sr-only peer"
@@ -955,14 +954,14 @@ function AppContent() {
                     </label>
                   </div>
 
-                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
                     <div>
                       <h4 className="font-bold text-slate-900">Match Threshold</h4>
                       <p className="text-xs text-slate-500">Only notify me for scores above <strong>{matchThreshold}%</strong>.</p>
                     </div>
                     <input
                       type="range"
-                      className="w-32 accent-[#30003b]"
+                      className="w-full sm:w-32 accent-[#30003b]"
                       min={0}
                       max={100}
                       step={5}
@@ -971,14 +970,14 @@ function AppContent() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                    <div className="flex-1 mr-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div>
                       <h4 className="font-bold text-slate-900">Digest Email</h4>
                       <p className="text-xs text-slate-500">Where to send your daily job digest.</p>
                     </div>
                     <input
                       type="email"
-                      className="w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
+                      className="w-full sm:w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
                       placeholder="your@email.com"
                       value={digestEmail}
                       onChange={(e) => setDigestEmail(e.target.value)}
@@ -1079,7 +1078,7 @@ function AppContent() {
               <section className="bg-white p-6 sm:p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <h3 className="text-2xl font-black text-slate-900 mb-6">Impressum</h3>
                 <p className="text-sm text-slate-500 mb-4">Angaben gem&auml;&szlig; &sect; 5 TMG</p>
-                <div className="text-slate-700 text-sm leading-relaxed space-y-1">
+                <div className="text-slate-700 text-sm leading-relaxed space-y-1" lang="de">
                   <p className="font-bold">Maria Alejandra Diaz Linde</p>
                   <p>Ob. Bismarckstra&szlig;e 93</p>
                   <p>70197 Stuttgart</p>
@@ -1095,10 +1094,10 @@ function AppContent() {
 
               {/* Datenschutzerkl&auml;rung */}
               <section className="bg-white p-6 sm:p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
-                <h3 className="text-2xl font-black text-slate-900 mb-6">Datenschutzerkl&auml;rung</h3>
+                <h3 className="text-2xl font-black text-slate-900 mb-6" style={{ hyphens: 'auto' }} lang="de">Datenschutzerkl&auml;rung</h3>
                 <p className="text-sm text-slate-500 mb-6">gem&auml;&szlig; Art. 13 DSGVO</p>
 
-                <div className="space-y-6 text-slate-700 text-sm leading-relaxed">
+                <div className="space-y-6 text-slate-700 text-sm leading-relaxed" style={{ hyphens: 'auto', wordBreak: 'break-word' }} lang="de">
                   <div>
                     <h4 className="font-bold text-slate-900 mb-2">1. Verantwortliche Stelle</h4>
                     <p>Maria Alejandra Diaz Linde<br />Ob. Bismarckstra&szlig;e 93, 70197 Stuttgart, Germany</p>
@@ -1424,7 +1423,7 @@ function JobCard({
              <div className="lg:col-span-2 space-y-4">
                 <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest">Description Intel</h5>
                 <div className="bg-slate-50 p-6 rounded-3xl text-sm text-slate-600 font-medium leading-relaxed border border-slate-100 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
-                  {match.description}
+                  {match.description || (match.reasoning as any)?.summary || 'Analyzing alignment and extraction details...'}
                 </div>
              </div>
              <div className="space-y-6">
