@@ -1068,7 +1068,7 @@ function AppContent() {
           )}
 
           {view === 'legal' && (
-            <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
+            <div className="max-w-[800px] mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
               {/* Hobby Project Notice */}
               <div className="flex items-center gap-3 p-5 bg-amber-50 rounded-3xl border border-amber-100 text-amber-800 text-sm font-medium">
                 <Info size={18} className="flex-shrink-0" />
@@ -1076,7 +1076,7 @@ function AppContent() {
               </div>
 
               {/* Impressum */}
-              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+              <section className="bg-white p-6 sm:p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <h3 className="text-2xl font-black text-slate-900 mb-6">Impressum</h3>
                 <p className="text-sm text-slate-500 mb-4">Angaben gem&auml;&szlig; &sect; 5 TMG</p>
                 <div className="text-slate-700 text-sm leading-relaxed space-y-1">
@@ -1084,6 +1084,8 @@ function AppContent() {
                   <p>Ob. Bismarckstra&szlig;e 93</p>
                   <p>70197 Stuttgart</p>
                   <p>Germany</p>
+                  <p className="pt-1">E-Mail: <a href="mailto:info@mycareerbrain.de" className="font-semibold hover:underline" style={{ color: '#30003b' }}>info@mycareerbrain.de</a></p>
+                  <p>Telefon: +49 (152) 55328179</p>
                 </div>
                 <h4 className="font-bold text-slate-900 mt-6 mb-2">Haftungsausschluss</h4>
                 <p className="text-slate-600 text-sm leading-relaxed">
@@ -1092,7 +1094,7 @@ function AppContent() {
               </section>
 
               {/* Datenschutzerkl&auml;rung */}
-              <section className="bg-white p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
+              <section className="bg-white p-6 sm:p-10 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100">
                 <h3 className="text-2xl font-black text-slate-900 mb-6">Datenschutzerkl&auml;rung</h3>
                 <p className="text-sm text-slate-500 mb-6">gem&auml;&szlig; Art. 13 DSGVO</p>
 
@@ -1114,6 +1116,9 @@ function AppContent() {
                       <li><strong>Job-Matches</strong> (Titel, Unternehmen, Bewertungen) &ndash; zur Anzeige und Verwaltung von Suchergebnissen</li>
                     </ul>
                     <p className="mt-2">
+                      Die Verarbeitung umfasst den automatisierten Abruf von Stellenanzeigen sowie deren t&auml;gliche Zustellung per E-Mail (Job-Scout).
+                    </p>
+                    <p className="mt-2">
                       Rechtsgrundlage: Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch aktive Nutzung) und Art. 6 Abs. 1 lit. b DSGVO (Vertragserf&uuml;llung).
                     </p>
                   </div>
@@ -1123,10 +1128,10 @@ function AppContent() {
                     <p>Folgende Drittanbieter werden genutzt:</p>
                     <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600">
                       <li><strong>Supabase</strong> (Cloud-Datenbank &amp; Authentifizierung) &ndash; Speicherung der Nutzerdaten</li>
-                      <li><strong>Google Gemini API</strong> &ndash; KI-basierte Profilanalyse und Jobbewertung</li>
+                      <li><strong>Google Gemini API</strong> &ndash; Zur KI-gest&uuml;tzten Analyse von Stellenanzeigen. Die Match-Scores dienen als Sortierhilfe; es findet keine automatisierte Entscheidungsfindung gem&auml;&szlig; Art. 22 DSGVO statt.</li>
                       <li><strong>Bundesagentur f&uuml;r Arbeit API</strong> &ndash; Abfrage &ouml;ffentlicher Stellenangebote</li>
                       <li><strong>JSearch / RapidAPI</strong> &ndash; Abfrage internationaler Stellenangebote</li>
-                      <li><strong>Resend</strong> &ndash; Versand von E-Mail-Benachrichtigungen</li>
+                      <li><strong>Resend</strong> &ndash; Zum Versand der t&auml;glichen Benachrichtigungs-E-Mails.</li>
                     </ul>
                     <p className="mt-2">
                       Eine &Uuml;bermittlung in Drittl&auml;nder (z.B. USA) kann bei Nutzung dieser Dienste erfolgen. Grundlage hierf&uuml;r sind die jeweiligen Standardvertragsklauseln (SCCs) und angemessene Schutzma&szlig;nahmen der Anbieter.
@@ -1137,6 +1142,9 @@ function AppContent() {
                     <h4 className="font-bold text-slate-900 mb-2">4. Speicherdauer</h4>
                     <p>
                       Ihre Daten werden gespeichert, solange Ihr Nutzerkonto besteht. Bei L&ouml;schung des Kontos werden alle zugeordneten Daten vollst&auml;ndig entfernt.
+                    </p>
+                    <p className="mt-2">
+                      Technische Protokolle &uuml;ber den E-Mail-Versand werden kurzzeitig zur Fehlerbehebung gespeichert.
                     </p>
                   </div>
 
@@ -1157,9 +1165,9 @@ function AppContent() {
                   </div>
 
                   <div>
-                    <h4 className="font-bold text-slate-900 mb-2">6. Cookies und Tracking</h4>
+                    <h4 className="font-bold text-slate-900 mb-2">6. Technisch notwendige Daten</h4>
                     <p>
-                      Diese Anwendung verwendet keine Tracking-Cookies, keine Analysetools und kein Werbetracking. Es werden lediglich technisch notwendige Session-Daten f&uuml;r die Authentifizierung gespeichert.
+                      Es werden keine Tracking-Cookies verwendet. Zur Authentifizierung werden technisch notwendige Daten im LocalStorage Ihres Browsers gespeichert.
                     </p>
                   </div>
 
@@ -1167,6 +1175,13 @@ function AppContent() {
                     <h4 className="font-bold text-slate-900 mb-2">7. Beschwerderecht</h4>
                     <p>
                       Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbeh&ouml;rde zu beschweren. Zust&auml;ndige Beh&ouml;rde ist der Landesbeauftragte f&uuml;r den Datenschutz und die Informationsfreiheit Baden-W&uuml;rttemberg.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 mb-2">8. Externe Links &amp; Google Suche</h4>
+                    <p>
+                      Die Anwendung enth&auml;lt Links zu externen Joobb&ouml;rsen sowie eine Suchfunktion f&uuml;r Google. Bei Klick auf diese Links verlassen Sie unsere Anwendung. Dabei werden Daten (z.B. Suchbegriffe wie Jobtitel und Unternehmen) an die jeweiligen Betreiber &uuml;bertragen. Wir haben keinen Einfluss auf die Datenverarbeitung auf den verlinkten Seiten.
                     </p>
                   </div>
                 </div>
