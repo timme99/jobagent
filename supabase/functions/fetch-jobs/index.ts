@@ -85,6 +85,8 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
     headers: { 'X-API-Key': 'jobboerse-jobsuche' },
   });
 
+  console.log(`[BA] API Raw Status: ${res.status}`);
+
   if (!res.ok) {
     console.error(`[BA] API error: ${res.status} ${res.statusText}`);
     return [];
@@ -176,12 +178,13 @@ async function fetchJobsForUser(
     return { inserted: 0, skipped: 0, errors: [msg] };
   }
 
-  const keywords: string = (settings.scan_keywords ?? '').trim();
+  let keywords: string = (settings.scan_keywords ?? '').trim();
   const location: string = (settings.scan_location ?? 'Remote').trim() || 'Remote';
 
   if (!keywords) {
-    console.warn(`Skipping user ${userId} - No keywords defined`);
-    return { inserted: 0, skipped: 0, errors: [] };
+    const fallback = 'Product Manager';
+    console.warn(`Skipping user ${userId} - No keywords defined; using fallback "${fallback}" for diagnostics`);
+    keywords = fallback;
   }
 
   // 2. Phase 1 — Bundesagentur für Arbeit
@@ -273,7 +276,7 @@ async function processAllUsers(
 
   const { data: allSettings, error: settingsError } = await supabase
     .from('user_settings')
-    .select('user_id')
+    .select('user_id, scan_keywords')
     .eq('automation_enabled', true);
 
   if (settingsError) {
@@ -281,11 +284,12 @@ async function processAllUsers(
     return [{ error: 'Failed to load user_settings', details: settingsError.message }];
   }
 
-  console.log(`Broadcast: ${allSettings?.length ?? 0} automation-enabled user(s)`);
+  console.log('Users found in DB:', allSettings?.length || 0);
 
   const results: Record<string, unknown>[] = [];
 
   for (const s of allSettings ?? []) {
+    console.log('Processing user:', s.user_id, 'Keywords:', s.scan_keywords || '(none)');
     const result = await fetchJobsForUser(supabase, s.user_id, jsearchApiKey);
     results.push({ userId: s.user_id, ...result });
     await sleep(500); // avoid thundering-herd on external APIs
@@ -299,6 +303,8 @@ async function processAllUsers(
 serve(async (req: Request) => {
   // CORS preflight — always first, outside try/catch
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  console.log('--- Hunter Function Started ---');
 
   try {
     const body = await req.json().catch(() => ({}));
