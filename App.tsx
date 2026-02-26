@@ -423,7 +423,7 @@ function AppContent() {
       {/* Sidebar — fixed overlay on mobile, static column on desktop */}
       <aside
         className={`
-          fixed md:static top-0 bottom-0 left-0 z-30 flex flex-col shadow-2xl overflow-hidden
+          fixed md:static top-0 bottom-0 left-0 z-30 flex flex-col h-full shadow-2xl overflow-hidden
           transition-all duration-500 ease-in-out
           ${isSidebarOpen
             ? 'w-64 translate-x-0'
