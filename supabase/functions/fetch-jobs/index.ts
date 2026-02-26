@@ -77,9 +77,10 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
     size: String(BA_PAGE_SIZE),
   });
 
-  console.log(`[BA] Fetching: was="${keywords}" wo="${location}"`);
+  const baUrl = `${BA_API_URL}?${params}`;
+  console.log(`[BA] URL: ${baUrl}`);
 
-  const res = await fetch(`${BA_API_URL}?${params}`, {
+  const res = await fetch(baUrl, {
     method: 'GET',
     headers: { 'X-API-Key': 'jobboerse-jobsuche' },
   });
@@ -119,9 +120,10 @@ async function fetchJSearchJobs(
   const query = `${keywords} in ${location}`;
   const params = new URLSearchParams({ query, page: '1', num_pages: '1' });
 
-  console.log(`[JSearch] Fetching: "${query}"`);
+  const jsearchUrl = `https://jsearch.p.rapidapi.com/search?${params}`;
+  console.log(`[JSearch] URL: ${jsearchUrl}`);
 
-  const res = await fetch(`https://jsearch.p.rapidapi.com/search?${params}`, {
+  const res = await fetch(jsearchUrl, {
     method: 'GET',
     headers: {
       'X-RapidAPI-Key': jsearchApiKey,
@@ -178,7 +180,7 @@ async function fetchJobsForUser(
   const location: string = (settings.scan_location ?? 'Remote').trim() || 'Remote';
 
   if (!keywords) {
-    console.log(`[${userId}] No scan_keywords configured — skipping`);
+    console.warn(`Skipping user ${userId} - No keywords defined`);
     return { inserted: 0, skipped: 0, errors: [] };
   }
 
