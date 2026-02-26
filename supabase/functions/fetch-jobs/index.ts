@@ -69,16 +69,16 @@ interface NormalizedJob {
 
 // ── Phase 1: Bundesagentur für Arbeit ────────────────────────────────────────
 
-// Regex for the canonical BA reference number format: NNNNN-NNNNNNNNNN-S
-const BA_REFNR_REGEX = /\d{5}-\d{10}-S/;
+// Regex for BA reference number — allows 8–12 digits in the middle segment
+// to cover formats like 12098-13675122-S (8 digits) and 10000-1234567890-S (10 digits)
+const BA_REFNR_REGEX = /\d{5}-\d{8,12}-S/;
 
 /**
  * Resolve the job ID for a Bundesagentur listing.
  * Priority:
- *   1. job.refnr  — canonical field in BA API v4
- *   2. job.hashId / job.id / job.encryptedId — legacy / alternative fields
- *   3. Regex scan of every string value in the job object (the ID often appears
- *      in the description prefixed with "Ref:") — catches any field name variation
+ *   1. job.refnr / job.hashId / job.id / job.encryptedId — named API fields
+ *   2. Regex scan of every string value for NNNNN-NNNNNNNNNN-S pattern
+ *   3. Brute-force: split any text on 'Ref: ' and grab next 20 chars
  */
 function resolveBAJobId(job: any): string {
   if (job.refnr)       return job.refnr;
@@ -86,6 +86,10 @@ function resolveBAJobId(job: any): string {
   if (job.id)          return job.id;
   if (job.encryptedId) return job.encryptedId;
 
+  // Log the raw description field so we can see exactly what is being scanned
+  console.error('RAW DESCRIPTION BEING SCANNED:', job.description);
+
+  // Pass 1: regex scan over every string field
   for (const value of Object.values(job)) {
     if (typeof value === 'string') {
       const match = value.match(BA_REFNR_REGEX);
@@ -93,6 +97,19 @@ function resolveBAJobId(job: any): string {
         console.log('Extracted ID from description:', match[0]);
         return match[0];
       }
+    }
+  }
+
+  // Pass 2: brute-force — split on 'Ref: ' and grab next 20 chars
+  const allText = Object.values(job)
+    .filter((v): v is string => typeof v === 'string')
+    .join(' ');
+  const refIdx = allText.indexOf('Ref: ');
+  if (refIdx !== -1) {
+    const candidate = allText.slice(refIdx + 5, refIdx + 25).trim().split(/\s/)[0];
+    if (candidate) {
+      console.log('Extracted ID via Ref: split:', candidate);
+      return candidate;
     }
   }
 
