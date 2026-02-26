@@ -69,54 +69,6 @@ interface NormalizedJob {
 
 // ── Phase 1: Bundesagentur für Arbeit ────────────────────────────────────────
 
-// Regex for BA reference number — allows 8–12 digits in the middle segment
-// to cover formats like 12098-13675122-S (8 digits) and 10000-1234567890-S (10 digits)
-const BA_REFNR_REGEX = /\d{5}-\d{8,12}-S/;
-
-/**
- * Resolve the job ID for a Bundesagentur listing.
- * Priority:
- *   1. job.refnr / job.hashId / job.id / job.encryptedId — named API fields
- *   2. Regex scan of every string value for NNNNN-NNNNNNNNNN-S pattern
- *   3. Brute-force: split any text on 'Ref: ' and grab next 20 chars
- */
-function resolveBAJobId(job: any): string {
-  if (job.refnr)       return job.refnr;
-  if (job.hashId)      return job.hashId;
-  if (job.id)          return job.id;
-  if (job.encryptedId) return job.encryptedId;
-
-  // Log the raw description field so we can see exactly what is being scanned
-  console.error('RAW DESCRIPTION BEING SCANNED:', job.description);
-
-  // Pass 1: regex scan over every string field
-  for (const value of Object.values(job)) {
-    if (typeof value === 'string') {
-      const match = value.match(BA_REFNR_REGEX);
-      if (match) {
-        console.log('Extracted ID from description:', match[0]);
-        return match[0];
-      }
-    }
-  }
-
-  // Pass 2: brute-force — split on 'Ref: ' and grab next 20 chars
-  const allText = Object.values(job)
-    .filter((v): v is string => typeof v === 'string')
-    .join(' ');
-  const refIdx = allText.indexOf('Ref: ');
-  if (refIdx !== -1) {
-    const candidate = allText.slice(refIdx + 5, refIdx + 25).trim().split(/\s/)[0];
-    if (candidate) {
-      console.log('Extracted ID via Ref: split:', candidate);
-      return candidate;
-    }
-  }
-
-  console.warn('[BA] Could not resolve job ID for entry:', JSON.stringify(job).slice(0, 200));
-  return 'unknown';
-}
-
 async function fetchBAJobs(keywords: string, location: string): Promise<NormalizedJob[]> {
   const params = new URLSearchParams({
     was: keywords,
@@ -151,17 +103,41 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
     console.log('[BA] First job sample:', JSON.stringify(offers[0]).slice(0, 400));
   }
 
-  return offers.map((job: any) => {
+  return offers.map((job: any, index: number) => {
     const ort = [job.arbeitsort?.ort, job.arbeitsort?.region, job.arbeitsort?.land]
       .filter(Boolean)
       .join(', ');
-    const jobId = resolveBAJobId(job);
+
+    // ── DEPLOYMENT CANARY: first job gets a hardcoded ID so we can confirm
+    //    new code is live. Remove this block once ID extraction is verified.
+    if (index === 0) {
+      console.log('[BA] CANARY: injecting DEBUG-123 for first job to confirm deployment');
+      return {
+        external_id: 'aa-DEBUG-123',
+        title: job.titel || job.beruf || 'Untitled Position',
+        company: job.arbeitgeber || 'Unknown Employer',
+        location: ort || 'Germany',
+        link: 'https://www.arbeitsagentur.de/jobsuche/jobdetail/DEBUG-123',
+        source: 'arbeitsagentur',
+      };
+    }
+
+    // Scan the entire job object serialised as JSON — catches any field name.
+    const jobJson = JSON.stringify(job);
+    console.error('[BA] RAW JOB JSON (first 500):', jobJson.slice(0, 500));
+    const extractedId = jobJson.match(/\d{5}-[\d-]{8,15}-S/)?.[0] ?? 'unknown';
+    if (extractedId === 'unknown') {
+      console.warn('[BA] Could not extract ID from job JSON. Raw (200):', jobJson.slice(0, 200));
+    } else {
+      console.log('[BA] Extracted ID:', extractedId);
+    }
+
     return {
-      external_id: `aa-${jobId}`,
+      external_id: `aa-${extractedId}`,
       title: job.titel || job.beruf || 'Untitled Position',
       company: job.arbeitgeber || 'Unknown Employer',
       location: ort || 'Germany',
-      link: `https://www.arbeitsagentur.de/jobsuche/jobdetail/${jobId}`,
+      link: `https://www.arbeitsagentur.de/jobsuche/jobdetail/${extractedId}`,
       source: 'arbeitsagentur',
     };
   });
