@@ -486,7 +486,7 @@ function AppContent() {
           />
         </nav>
 
-        <div className="p-4 border-t border-white/10 space-y-2">
+        <div className="mt-auto p-4 border-t border-white/10 space-y-2">
           {/* User identity chip */}
           <div className={`flex items-center gap-3 px-2 py-1.5 rounded-2xl ${isSidebarOpen ? '' : 'justify-center'}`}>
             <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
