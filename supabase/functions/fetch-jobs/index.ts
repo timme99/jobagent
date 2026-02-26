@@ -97,16 +97,24 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
 
   console.log(`[BA] Received ${offers.length} result(s)`);
 
+  // Log the field names of the first job so we can see exactly what the API returns
+  if (offers.length > 0) {
+    console.log('[BA] First job keys:', Object.keys(offers[0]).join(', '));
+    console.log('[BA] First job sample:', JSON.stringify(offers[0]).slice(0, 400));
+  }
+
   return offers.map((job: any) => {
     const ort = [job.arbeitsort?.ort, job.arbeitsort?.region, job.arbeitsort?.land]
       .filter(Boolean)
       .join(', ');
+    // refnr is the canonical ID in BA API v4; fall back to hashId / id if absent
+    const jobId = job.refnr ?? job.hashId ?? job.id ?? job.encryptedId ?? 'unknown';
     return {
-      external_id: `aa-${job.hashId}`,
+      external_id: `aa-${jobId}`,
       title: job.titel || job.beruf || 'Untitled Position',
       company: job.arbeitgeber || 'Unknown Employer',
       location: ort || 'Germany',
-      link: `https://www.arbeitsagentur.de/jobsuche/suche?id=${job.hashId}`,
+      link: `https://www.arbeitsagentur.de/jobsuche/jobdetail/${jobId}`,
       source: 'arbeitsagentur',
     };
   });
@@ -263,6 +271,7 @@ async function fetchJobsForUser(
   }
 
   console.log(`[${userId}] Inserted ${rows.length} new job(s)`);
+  console.log(`DEBUG: Successfully processed ${rows.length} jobs for user ${userId}`);
   return { inserted: rows.length, skipped: skippedCount, errors };
 }
 
