@@ -192,7 +192,12 @@ async function fetchJSearchJobs(
 
 interface AiScoreResult {
   score: number;
-  reasoning: { pros: string[]; cons: string[]; riskFactors: string[] };
+  reasoning: {
+    strategic_pros: string[];   // Why this role fits their skills & career goals
+    risk_analysis: string[];    // Gaps, mismatches, or concerns
+    ai_warnings: string[];      // Hard dealbreakers or red flags
+    description_intel: string;  // One-sentence summary of the role
+  };
 }
 
 /**
@@ -230,8 +235,17 @@ Company: ${job.company}
 Location: ${job.location}
 
 Score 0-100 where 90+=perfect strategic fit, 70-89=strong match, 50-69=moderate, <50=poor.
-Return exactly: {"score": N, "reasoning": {"pros": ["...", "..."], "cons": ["...", "..."], "riskFactors": ["..."]}}
-Each array: 2-3 concise items max.`;
+Return exactly this JSON and nothing else:
+{
+  "score": N,
+  "reasoning": {
+    "strategic_pros": ["why this fits their skills/goals", "another pro"],
+    "risk_analysis": ["gap or concern", "another concern"],
+    "ai_warnings": ["hard dealbreaker if any, else empty"],
+    "description_intel": "One sentence describing what this role actually does."
+  }
+}
+Keep strategic_pros and risk_analysis to 2-3 items. ai_warnings can be empty array.`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${geminiApiKey}`,
@@ -242,7 +256,7 @@ Each array: 2-3 concise items max.`;
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 400,
+          maxOutputTokens: 500,
           responseMimeType: 'application/json',
         },
       }),
@@ -263,12 +277,14 @@ Each array: 2-3 concise items max.`;
   }
 
   const parsed = JSON.parse(text);
+  const r = parsed.reasoning ?? {};
   return {
     score: typeof parsed.score === 'number' ? Math.min(100, Math.max(0, Math.round(parsed.score))) : 0,
     reasoning: {
-      pros: Array.isArray(parsed.reasoning?.pros) ? parsed.reasoning.pros : [],
-      cons: Array.isArray(parsed.reasoning?.cons) ? parsed.reasoning.cons : [],
-      riskFactors: Array.isArray(parsed.reasoning?.riskFactors) ? parsed.reasoning.riskFactors : [],
+      strategic_pros: Array.isArray(r.strategic_pros) ? r.strategic_pros : [],
+      risk_analysis:  Array.isArray(r.risk_analysis)  ? r.risk_analysis  : [],
+      ai_warnings:    Array.isArray(r.ai_warnings)    ? r.ai_warnings    : [],
+      description_intel: typeof r.description_intel === 'string' ? r.description_intel : '',
     },
   };
 }
