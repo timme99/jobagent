@@ -431,7 +431,7 @@ function AppContent() {
         `}
         style={{ background: 'linear-gradient(180deg, #30003b 0%, #1a0024 100%)' }}
       >
-        <div className="p-5 flex items-center gap-3 min-h-[72px]">
+        <div className="flex-shrink-0 p-5 flex items-center gap-3 min-h-[72px]">
           <img
             src="https://mfydmzdowjfitqpswues.supabase.co/storage/v1/object/public/public-assets/W%26Blogo.png"
             alt="MyCareerBrain"
