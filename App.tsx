@@ -423,7 +423,7 @@ function AppContent() {
       {/* Sidebar — fixed overlay on mobile, static column on desktop */}
       <aside
         className={`
-          fixed md:static top-0 bottom-0 left-0 z-30 flex flex-col h-full shadow-2xl overflow-hidden
+          fixed md:static top-0 bottom-0 left-0 z-30 flex flex-col h-screen shadow-2xl overflow-hidden
           transition-all duration-500 ease-in-out
           ${isSidebarOpen
             ? 'w-64 translate-x-0'
@@ -1342,7 +1342,7 @@ function JobCard({
             <div className="space-y-3">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Strategic Pros</p>
               <div className="flex flex-wrap gap-2">
-                {(match.reasoning.pros || []).map((pro, i) => (
+                {((match.reasoning as any).strategic_pros || match.reasoning.pros || []).map((pro: string, i: number) => (
                   <span key={i} className="px-3 py-1.5 bg-green-50 text-green-700 text-[11px] font-bold rounded-xl border border-green-100 flex items-center gap-1.5 shadow-sm">
                     <CheckCircle2 size={12}/> {pro}
                   </span>
@@ -1352,7 +1352,7 @@ function JobCard({
             <div className="space-y-3">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Risk Analysis</p>
               <div className="flex flex-wrap gap-2">
-                {(match.reasoning.cons || []).slice(0, 3).map((con, i) => (
+                {((match.reasoning as any).risk_analysis || match.reasoning.cons || []).slice(0, 3).map((con: string, i: number) => (
                   <span key={i} className="px-3 py-1.5 bg-red-50 text-red-700 text-[11px] font-bold rounded-xl border border-red-100 flex items-center gap-1.5 shadow-sm">
                     <AlertCircle size={12}/> {con}
                   </span>
@@ -1423,15 +1423,15 @@ function JobCard({
              <div className="lg:col-span-2 space-y-4">
                 <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest">Description Intel</h5>
                 <div className="bg-slate-50 p-6 rounded-3xl text-sm text-slate-600 font-medium leading-relaxed border border-slate-100 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
-                  {match.description || (match.reasoning as any)?.summary || 'Analyzing alignment and extraction details...'}
+                  {(match.reasoning as any)?.description_intel || match.description || (match.reasoning as any)?.summary || 'Analyzing alignment and extraction details...'}
                 </div>
              </div>
              <div className="space-y-6">
-                {(match.reasoning.riskFactors || []).length > 0 && (
+                {((match.reasoning as any).ai_warnings || match.reasoning.riskFactors || []).length > 0 && (
                   <div className="space-y-3">
                     <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest">AI Warnings</h5>
                     <div className="p-6 bg-amber-50 rounded-[2rem] text-amber-800 text-xs font-bold border border-amber-100 space-y-2 shadow-inner">
-                      {match.reasoning.riskFactors.map((risk, i) => (
+                      {((match.reasoning as any).ai_warnings || match.reasoning.riskFactors || []).map((risk: string, i: number) => (
                         <div key={i} className="flex gap-2">
                           <AlertCircle size={14} className="flex-shrink-0" />
                           <span>{risk}</span>
