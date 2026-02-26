@@ -69,6 +69,37 @@ interface NormalizedJob {
 
 // ── Phase 1: Bundesagentur für Arbeit ────────────────────────────────────────
 
+// Regex for the canonical BA reference number format: NNNNN-NNNNNNNNNN-S
+const BA_REFNR_REGEX = /\d{5}-\d{10}-S/;
+
+/**
+ * Resolve the job ID for a Bundesagentur listing.
+ * Priority:
+ *   1. job.refnr  — canonical field in BA API v4
+ *   2. job.hashId / job.id / job.encryptedId — legacy / alternative fields
+ *   3. Regex scan of every string value in the job object (the ID often appears
+ *      in the description prefixed with "Ref:") — catches any field name variation
+ */
+function resolveBAJobId(job: any): string {
+  if (job.refnr)       return job.refnr;
+  if (job.hashId)      return job.hashId;
+  if (job.id)          return job.id;
+  if (job.encryptedId) return job.encryptedId;
+
+  for (const value of Object.values(job)) {
+    if (typeof value === 'string') {
+      const match = value.match(BA_REFNR_REGEX);
+      if (match) {
+        console.log('Extracted ID from description:', match[0]);
+        return match[0];
+      }
+    }
+  }
+
+  console.warn('[BA] Could not resolve job ID for entry:', JSON.stringify(job).slice(0, 200));
+  return 'unknown';
+}
+
 async function fetchBAJobs(keywords: string, location: string): Promise<NormalizedJob[]> {
   const params = new URLSearchParams({
     was: keywords,
@@ -107,8 +138,7 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
     const ort = [job.arbeitsort?.ort, job.arbeitsort?.region, job.arbeitsort?.land]
       .filter(Boolean)
       .join(', ');
-    // refnr is the canonical ID in BA API v4; fall back to hashId / id if absent
-    const jobId = job.refnr ?? job.hashId ?? job.id ?? job.encryptedId ?? 'unknown';
+    const jobId = resolveBAJobId(job);
     return {
       external_id: `aa-${jobId}`,
       title: job.titel || job.beruf || 'Untitled Position',
