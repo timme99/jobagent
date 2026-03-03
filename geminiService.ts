@@ -88,11 +88,17 @@ export const synthesizeProfile = async (
 
 const VALID_LOCATION_PREFERENCES = ['remote', 'hybrid', 'onsite', 'flexible'] as const;
 
-export const refineStrategy = async (messyThoughts: string): Promise<SearchStrategy> => {
+export const refineStrategy = async (
+  messyThoughts: string
+): Promise<{ strategy: SearchStrategy; booleanKeywords: string }> => {
   return withRetry(async () => {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Convert these unstructured career preferences and "messy thoughts" into a rigorous Search Strategy: ${messyThoughts}`,
+      contents: `You are a career strategy AI. Convert these unstructured career preferences and "messy thoughts" into:
+1. A rigorous Search Strategy
+2. A professional Boolean Search String for job boards (e.g. ("Digital Transformation" OR "AI Consultant") AND ("Manager" OR "Director") AND ("Remote" OR "Hybrid"))
+
+User input: ${messyThoughts}`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -102,9 +108,13 @@ export const refineStrategy = async (messyThoughts: string): Promise<SearchStrat
             dealbreakers: { type: Type.ARRAY, items: { type: Type.STRING } },
             preferredIndustries: { type: Type.ARRAY, items: { type: Type.STRING } },
             locationPreference: { type: Type.STRING, enum: ["remote", "hybrid", "onsite", "flexible"] },
-            seniorityLevel: { type: Type.STRING }
+            seniorityLevel: { type: Type.STRING },
+            booleanKeywords: {
+              type: Type.STRING,
+              description: 'Professional Boolean Search String for job boards combining role titles, skills, and location using AND/OR operators and quotes'
+            }
           },
-          required: ["priorities", "dealbreakers", "preferredIndustries", "locationPreference", "seniorityLevel"]
+          required: ["priorities", "dealbreakers", "preferredIndustries", "locationPreference", "seniorityLevel", "booleanKeywords"]
         }
       }
     });
@@ -113,13 +123,15 @@ export const refineStrategy = async (messyThoughts: string): Promise<SearchStrat
     const locationPreference = VALID_LOCATION_PREFERENCES.includes(locationRaw as any)
       ? (locationRaw as SearchStrategy['locationPreference'])
       : 'flexible';
-    return {
+    const strategy: SearchStrategy = {
       priorities: Array.isArray(parsed.priorities) ? parsed.priorities : [],
       dealbreakers: Array.isArray(parsed.dealbreakers) ? parsed.dealbreakers : [],
       preferredIndustries: Array.isArray(parsed.preferredIndustries) ? parsed.preferredIndustries : [],
       locationPreference,
       seniorityLevel: parsed.seniorityLevel || 'mid-level'
     };
+    const booleanKeywords = typeof parsed.booleanKeywords === 'string' ? parsed.booleanKeywords : '';
+    return { strategy, booleanKeywords };
   });
 };
 

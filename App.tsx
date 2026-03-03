@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, Component } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import {
   Briefcase,
@@ -30,8 +30,18 @@ import {
   LogOut,
   Coffee,
   Dog,
+  Upload,
+  ShieldAlert,
 } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import * as mammoth from 'mammoth';
 import { MasterProfile, SearchStrategy, JobMatch, AppView } from './types';
+
+// Set up the PDF.js worker (resolved from the installed package via Vite's URL)
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+).href;
 import { synthesizeProfile, refineStrategy, scoreJobMatch, fetchLiveJobs } from './geminiService';
 import { fetchJSearchJobs } from './jobSources';
 import { AuthProvider, useAuth } from './AuthProvider';
@@ -151,6 +161,16 @@ function AppContent() {
   const [digestSending, setDigestSending] = useState(false);
   const [digestStatus, setDigestStatus] = useState<string | null>(null);
 
+  // Danger Zone state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  // File parsing state
+  const [fileParseLoading, setFileParseLoading] = useState(false);
+  const [fileParseName, setFileParseName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // State for inputs
   const [profileUrl, setProfileUrl] = useState('');
   const [cvText, setCvText] = useState('');
@@ -228,19 +248,99 @@ function AppContent() {
   const handleRefineStrategy = async () => {
     if (!messyThoughts.trim()) return;
     setIsLoading(true);
-    setLoadingText('Magic Wand at work: Structuring your future...');
+    setLoadingText('Keyword Architect at work: Structuring your future...');
     try {
-      const data = await refineStrategy(messyThoughts);
+      const { strategy: data, booleanKeywords } = await refineStrategy(messyThoughts);
       setStrategy(data);
       await db.saveStrategy(userId, data);
+      // Save the AI-generated Boolean Search String into scan_keywords so the
+      // Hunter cron uses it on the next automated run.
+      if (booleanKeywords) {
+        setScanKeywords(booleanKeywords);
+        await db.saveSettings(userId, { scanKeywords: booleanKeywords });
+      } else if (data.priorities?.length > 0) {
+        setScanKeywords(data.priorities[0]);
+      }
       setView('scanner');
-      if (data.priorities?.length > 0) setScanKeywords(data.priorities[0]);
     } catch (error: any) {
       console.error(error);
       const isRateLimit = error?.message?.includes('429');
       alert(isRateLimit ? 'API Quota Exceeded. Please try again in a moment.' : 'Failed to refine strategy.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // ── File parsing (PDF / DOCX) ──────────────────────────────────────
+  const handleFileUpload = async (file: File) => {
+    setFileParseLoading(true);
+    setFileParseName(file.name);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      let text = '';
+
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          text += content.items.map((item: any) => item.str).join(' ') + '\n';
+        }
+      } else if (
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.name.toLowerCase().endsWith('.docx')
+      ) {
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        text = result.value;
+      } else {
+        alert('Unsupported file type. Please upload a PDF or .docx file.');
+        setFileParseName(null);
+        return;
+      }
+
+      const cleaned = text.trim();
+      setCvText(cleaned);
+      await db.saveProfile(userId, profile ?? { name: '', summary: '', skills: [], experience: [], hiddenStrengths: [] } as any, profileSources);
+    } catch (err: any) {
+      console.error('File parse error:', err);
+      alert('Failed to parse the file. Please try again or paste the text manually.');
+      setFileParseName(null);
+    } finally {
+      setFileParseLoading(false);
+    }
+  };
+
+  // ── Delete Account ─────────────────────────────────────────────────
+  const handleDeleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('Not authenticated. Please sign in again.');
+        return;
+      }
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      if (res.ok) {
+        await signOut();
+      } else {
+        const data = await res.json();
+        alert(`Failed to delete account: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setDeletingAccount(false);
+      setShowDeleteConfirm(false);
+      setDeleteConfirmText('');
     }
   };
 
@@ -583,12 +683,61 @@ function AppContent() {
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
                       <FileText size={14} style={{ color: '#30003b' }} /> CV or Professional Career Bio
                     </label>
-                    <textarea 
-                      className="w-full h-48 p-6 rounded-3xl border border-slate-200 focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
-                      placeholder="Paste your CV text, or talk about your career journey in your own words..."
-                      value={cvText}
-                      onChange={(e) => setCvText(e.target.value)}
-                    />
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <textarea
+                        className="w-full h-48 p-6 rounded-3xl border border-slate-200 focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] transition-all outline-none resize-none bg-slate-50/50 text-slate-700 font-medium text-sm leading-relaxed"
+                        placeholder="Paste your CV text, or talk about your career journey in your own words..."
+                        value={cvText}
+                        onChange={(e) => setCvText(e.target.value)}
+                      />
+                      {/* File upload dropzone */}
+                      <div
+                        className="h-48 rounded-3xl border-2 border-dashed border-slate-200 hover:border-[#11ccf5] bg-slate-50/50 hover:bg-[#11ccf5]/5 transition-all flex flex-col items-center justify-center gap-3 cursor-pointer group"
+                        onClick={() => fileInputRef.current?.click()}
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-[#11ccf5]', 'bg-[#11ccf5]/5'); }}
+                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-[#11ccf5]', 'bg-[#11ccf5]/5'); }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('border-[#11ccf5]', 'bg-[#11ccf5]/5');
+                          const file = e.dataTransfer.files[0];
+                          if (file) await handleFileUpload(file);
+                        }}
+                      >
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) await handleFileUpload(file);
+                            e.target.value = '';
+                          }}
+                        />
+                        {fileParseLoading ? (
+                          <>
+                            <Loader2 size={32} className="animate-spin" style={{ color: '#30003b' }} />
+                            <p className="text-xs font-bold text-slate-500">Extracting text…</p>
+                          </>
+                        ) : fileParseName ? (
+                          <>
+                            <CheckCircle2 size={32} style={{ color: '#30003b' }} />
+                            <p className="text-xs font-bold text-slate-700 text-center px-4 truncate w-full text-center">{fileParseName}</p>
+                            <p className="text-[11px] text-slate-400 font-medium">Text extracted ✓ Click to replace</p>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-12 h-12 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform" style={{ background: 'rgba(48,0,59,0.06)', color: '#30003b' }}>
+                              <Upload size={22} />
+                            </div>
+                            <div className="text-center px-4">
+                              <p className="text-sm font-bold text-slate-600">Upload PDF or Word</p>
+                              <p className="text-[11px] text-slate-400 font-medium mt-0.5">Drag & drop or click to browse</p>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Extra Context Input */}
@@ -1019,6 +1168,63 @@ function AppContent() {
                     <div className="absolute right-[-10%] top-[-20%] w-64 h-64 rounded-full blur-3xl" style={{ background: 'rgba(17,204,245,0.1)' }} />
                   </div>
 
+                </div>
+              </section>
+
+              {/* ── Danger Zone ────────────────────────────────────────────── */}
+              <section className="bg-white rounded-[2rem] sm:rounded-[3rem] border-2 border-red-100 shadow-xl shadow-red-50/40 overflow-hidden">
+                <div className="p-6 sm:p-10">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="p-4 rounded-2xl bg-red-50 text-red-600 flex-shrink-0">
+                      <ShieldAlert size={28} />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-black text-red-700">Danger Zone</h3>
+                      <p className="text-slate-500 font-medium text-sm">Irreversible account actions.</p>
+                    </div>
+                  </div>
+
+                  <div className="p-5 bg-red-50 rounded-2xl border border-red-100 text-sm text-red-800 font-medium leading-relaxed mb-6">
+                    <strong>Warning:</strong> Deleting your account will permanently wipe your Master Profile, job history, and all settings. If you want to return, you will have to start from scratch.
+                  </div>
+
+                  {!showDeleteConfirm ? (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="px-6 py-3 rounded-2xl font-black text-sm text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition-all inline-flex items-center gap-2"
+                    >
+                      <Trash2 size={16} /> Delete My Account
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-sm font-bold text-slate-700">
+                        Type <span className="font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-lg">DELETE</span> to confirm:
+                      </p>
+                      <input
+                        type="text"
+                        className="w-full sm:w-72 px-4 py-3 rounded-2xl border-2 border-red-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-red-100 focus:border-red-400 outline-none transition-all"
+                        placeholder="Type DELETE"
+                        value={deleteConfirmText}
+                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                        autoFocus
+                      />
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          onClick={handleDeleteAccount}
+                          disabled={deleteConfirmText !== 'DELETE' || deletingAccount}
+                          className="px-6 py-3 rounded-2xl font-black text-sm text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all inline-flex items-center gap-2 shadow-lg shadow-red-200"
+                        >
+                          {deletingAccount ? <><Loader2 size={16} className="animate-spin" /> Deleting…</> : <><Trash2 size={16} /> Permanently Delete Account</>}
+                        </button>
+                        <button
+                          onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); }}
+                          className="px-6 py-3 rounded-2xl font-black text-sm text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </section>
             </div>
