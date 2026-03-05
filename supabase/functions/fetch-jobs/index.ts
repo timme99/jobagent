@@ -202,7 +202,7 @@ interface AiScoreResult {
 
 /**
  * Call Gemini REST API to score a single job against the candidate's profile.
- * Uses gemini-1.5-flash-8b — fastest/cheapest model, ideal for 30 parallel calls.
+ * Uses gemini-2.0-flash-lite — fast and cost-efficient, ideal for parallel scoring.
  */
 async function scoreJobWithGemini(
   job: { title: string; company: string; location: string },
@@ -248,7 +248,7 @@ Return exactly this JSON and nothing else:
 Keep strategic_pros and risk_analysis to 2-3 items. ai_warnings can be empty array.`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${geminiApiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiApiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -290,8 +290,8 @@ Keep strategic_pros and risk_analysis to 2-3 items. ai_warnings can be empty arr
 }
 
 /**
- * After inserting new jobs, score the top 5 against the user's Master Profile.
- * All 5 calls run in parallel to stay well within the 60s function timeout.
+ * After inserting new jobs, score the top 10 against the user's Master Profile.
+ * Jobs are processed in chunks of 5 to stay well within the 60s Supabase timeout.
  */
 async function analyzeNewJobs(
   supabase: ReturnType<typeof createClient>,
@@ -324,30 +324,40 @@ async function analyzeNewJobs(
   const profile = profileRes.data;
   const strategy = strategyRes.data ?? null;
 
-  // Top 5 — BA API already orders by relevance
-  const topJobs = insertedJobs.slice(0, 5);
-  console.log(`[AI] Scoring ${topJobs.length} jobs for user ${userId} in parallel...`);
+  // Top 10 — BA API already orders by relevance
+  const topJobs = insertedJobs.slice(0, 10);
+  console.log(`[AI] Scoring ${topJobs.length} jobs for user ${userId} in chunks of 5...`);
 
-  const results = await Promise.all(
-    topJobs.map(async (job) => {
-      try {
-        const result = await scoreJobWithGemini(job, profile, strategy, keywords, geminiApiKey);
-        if (!result) return null;
-        console.log(`[AI] "${job.title}" → ${result.score}%`);
-        return { jobId: job.id, ...result };
-      } catch (err: any) {
-        console.error(`[AI] Failed to score "${job.title}" (${job.id}):`, err.message);
-        return null;
-      }
-    }),
-  );
+  const allScored: Array<AiScoreResult & { jobId: string }> = [];
 
-  const scored = results.filter(Boolean) as Array<AiScoreResult & { jobId: string }>;
-  console.log(`[AI] Scored ${scored.length}/${topJobs.length} jobs successfully for user ${userId}`);
+  // Process in chunks of 5 to avoid hitting the 60s Supabase edge-function timeout
+  const CHUNK_SIZE = 5;
+  for (let i = 0; i < topJobs.length; i += CHUNK_SIZE) {
+    const chunk = topJobs.slice(i, i + CHUNK_SIZE);
+    const chunkResults = await Promise.all(
+      chunk.map(async (job) => {
+        try {
+          const result = await scoreJobWithGemini(job, profile, strategy, keywords, geminiApiKey);
+          if (!result) return null;
+          console.log(`[AI] "${job.title}" → ${result.score}%`);
+          return { jobId: job.id, ...result };
+        } catch (err: any) {
+          console.error(`[AI] Failed to score "${job.title}" (${job.id}):`, err.message);
+          return null;
+        }
+      }),
+    );
+    allScored.push(...(chunkResults.filter(Boolean) as Array<AiScoreResult & { jobId: string }>));
+
+    // Small pause between chunks to avoid rate-limit pressure
+    if (i + CHUNK_SIZE < topJobs.length) await sleep(300);
+  }
+
+  console.log(`[AI] Scored ${allScored.length}/${topJobs.length} jobs successfully for user ${userId}`);
 
   // Write scores back — all parallel, per-row failure logged but non-blocking
   await Promise.all(
-    scored.map(({ jobId, score, reasoning }) =>
+    allScored.map(({ jobId, score, reasoning }) =>
       supabase
         .from('job_matches')
         .update({ score, reasoning })
@@ -382,8 +392,10 @@ async function fetchJobsForUser(
     return { inserted: 0, skipped: 0, errors: [msg] };
   }
 
+  // scan_keywords is the absolute source of truth — use it exactly as stored (manual edits are respected)
   let keywords: string = (settings.scan_keywords ?? '').trim();
-  const location: string = (settings.scan_location ?? 'Remote').trim() || 'Remote';
+  // scan_location from DB is canonical; fall back to 'Germany' only when the field is empty
+  const location: string = (settings.scan_location ?? '').trim() || 'Germany';
 
   if (!keywords) {
     const fallback = 'Product Manager';

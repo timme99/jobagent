@@ -177,7 +177,7 @@ function AppContent() {
   const [extraContext, setExtraContext] = useState('');
   const [messyThoughts, setMessyThoughts] = useState('');
   const [scanKeywords, setScanKeywords] = useState('');
-  const [scanLocation, setScanLocation] = useState('Remote');
+  const [scanLocation, setScanLocation] = useState('Germany');
   const [dataLoaded, setDataLoaded] = useState(false);
 
   // ── Load all data from Supabase on mount ──────────────────────────
@@ -201,7 +201,7 @@ function AppContent() {
         setAutomationEnabled(settingsData.automationEnabled);
         setMatchThreshold(settingsData.matchThreshold);
         setScanKeywords(settingsData.scanKeywords);
-        setScanLocation(settingsData.scanLocation || 'Remote');
+        setScanLocation(settingsData.scanLocation || 'Germany');
         setDigestEmail(settingsData.digestEmail || userEmail);
         setDisplayName(settingsData.displayName);
         setAvatarIcon(settingsData.avatarIcon || 'User');
@@ -586,7 +586,7 @@ function AppContent() {
           />
         </nav>
 
-        <div className="mt-auto p-4 border-t border-white/10 space-y-2">
+        <div className="mt-auto flex-shrink-0 p-4 border-t border-white/10 space-y-2">
           {/* User identity chip */}
           <div className={`flex items-center gap-3 px-2 py-1.5 rounded-2xl ${isSidebarOpen ? '' : 'justify-center'}`}>
             <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -923,22 +923,24 @@ function AppContent() {
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="relative group">
                       <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#30003b] transition-colors" size={18} />
-                      <input 
-                        type="text" 
-                        placeholder="Keywords (SaaS, Customer Success...)" 
+                      <input
+                        type="text"
+                        placeholder="Keywords (SaaS, Customer Success...)"
                         className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 outline-none transition-all"
                         value={scanKeywords}
                         onChange={(e) => setScanKeywords(e.target.value)}
+                        onBlur={() => db.saveSettings(userId, { scanKeywords })}
                       />
                     </div>
                     <div className="relative group">
                       <Target className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#30003b] transition-colors" size={18} />
-                      <input 
-                        type="text" 
-                        placeholder="Location (Remote, Berlin...)" 
+                      <input
+                        type="text"
+                        placeholder="Location (Germany, Berlin...)"
                         className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-100 bg-slate-50/50 text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 outline-none transition-all"
                         value={scanLocation}
                         onChange={(e) => setScanLocation(e.target.value)}
+                        onBlur={() => db.saveSettings(userId, { scanLocation })}
                       />
                     </div>
                   </div>
@@ -1116,6 +1118,36 @@ function AppContent() {
                       step={5}
                       value={matchThreshold}
                       onChange={(e) => { setMatchThreshold(Number(e.target.value)); db.saveSettings(userId, { matchThreshold: Number(e.target.value) }); }}
+                    />
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div>
+                      <h4 className="font-bold text-slate-900">Hunter Keywords</h4>
+                      <p className="text-xs text-slate-500">Boolean search string the Hunter uses each morning. Manual edits are respected exactly as written.</p>
+                    </div>
+                    <textarea
+                      className="w-full sm:w-72 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all resize-none"
+                      rows={3}
+                      placeholder='("Product Manager" OR "PM") AND ("SaaS" OR "B2B")'
+                      value={scanKeywords}
+                      onChange={(e) => setScanKeywords(e.target.value)}
+                      onBlur={() => db.saveSettings(userId, { scanKeywords })}
+                    />
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div>
+                      <h4 className="font-bold text-slate-900">Scan Location</h4>
+                      <p className="text-xs text-slate-500">City or region for the Hunter to search. Defaults to Germany.</p>
+                    </div>
+                    <input
+                      type="text"
+                      className="w-full sm:w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
+                      placeholder="Germany"
+                      value={scanLocation}
+                      onChange={(e) => setScanLocation(e.target.value)}
+                      onBlur={() => db.saveSettings(userId, { scanLocation })}
                     />
                   </div>
 
