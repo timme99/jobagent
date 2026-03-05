@@ -32,6 +32,8 @@ import {
   Dog,
   Upload,
   ShieldAlert,
+  Radio,
+  SlidersHorizontal,
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import * as mammoth from 'mammoth';
@@ -552,12 +554,12 @@ function AppContent() {
             expanded={isSidebarOpen} 
             onClick={() => setView('profile')} 
           />
-          <NavItem 
-            icon={<Target size={20}/>} 
-            label="Search Strategy" 
-            active={view === 'strategy'} 
-            expanded={isSidebarOpen} 
-            onClick={() => setView('strategy')} 
+          <NavItem
+            icon={<Radio size={20}/>}
+            label="The Radar"
+            active={view === 'strategy'}
+            expanded={isSidebarOpen}
+            onClick={() => setView('strategy')}
             disabled={!profile}
           />
           <NavItem 
@@ -569,12 +571,12 @@ function AppContent() {
             disabled={!strategy}
             badge={activeMatches.length > 0 ? activeMatches.length : undefined}
           />
-          <NavItem 
-            icon={<Settings size={20}/>} 
-            label="Automation" 
-            active={view === 'automation'} 
-            expanded={isSidebarOpen} 
-            onClick={() => setView('automation')} 
+          <NavItem
+            icon={<SlidersHorizontal size={20}/>}
+            label="Settings"
+            active={view === 'automation'}
+            expanded={isSidebarOpen}
+            onClick={() => setView('automation')}
           />
           <NavItem 
             icon={<Clock size={20}/>} 
@@ -634,7 +636,9 @@ function AppContent() {
               className="md:hidden h-7 w-auto object-contain flex-shrink-0"
             />
             <div className="animate-in fade-in slide-in-from-top-2 duration-500">
-              <h2 className="text-xl font-bold text-slate-900 capitalize tracking-tight">{view.replace('-', ' ')}</h2>
+              <h2 className="text-xl font-bold text-slate-900 capitalize tracking-tight">
+                {({ profile: 'Master Profile', strategy: 'The Radar', scanner: 'Live Scanner', automation: 'Settings', history: 'History', legal: 'Legal' } as Record<string, string>)[view] ?? view}
+              </h2>
               <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mt-0.5 hidden sm:block">MyCareerBrain</p>
             </div>
           </div>
@@ -884,7 +888,7 @@ function AppContent() {
                 <div className="grid md:grid-cols-2 gap-8 animate-in zoom-in-95 duration-1000">
                   <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/40">
                     <h4 className="font-black text-slate-900 mb-6 flex items-center gap-3 text-lg uppercase tracking-tight">
-                      <div className="w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center"><CheckCircle2 size={18}/></div> 
+                      <div className="w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center"><CheckCircle2 size={18}/></div>
                       Strategic Priorities
                     </h4>
                     <ul className="space-y-4">
@@ -898,7 +902,7 @@ function AppContent() {
                   </div>
                   <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/40">
                     <h4 className="font-black text-slate-900 mb-6 flex items-center gap-3 text-lg uppercase tracking-tight">
-                      <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center"><XCircle size={18}/></div> 
+                      <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center"><XCircle size={18}/></div>
                       Hard Dealbreakers
                     </h4>
                     <ul className="space-y-4">
@@ -912,6 +916,51 @@ function AppContent() {
                   </div>
                 </div>
               )}
+
+              {/* ── Hunter Controls ────────────────────────────────────────── */}
+              <section className="bg-white p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100 animate-in fade-in duration-700">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="p-4 rounded-2xl" style={{ background: 'rgba(17,204,245,0.1)', color: '#30003b' }}>
+                    <Radio size={28} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900">Hunter Controls</h3>
+                    <p className="text-slate-500 font-medium text-sm">The technical execution layer — how your AI strategy is translated into search queries.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-slate-900">Boolean Search String</h4>
+                      <p className="text-xs text-slate-500 mt-1">The AI Architect generates this from your strategy above. You can manually edit it — the Hunter will use it <strong>exactly as written</strong>.</p>
+                    </div>
+                    <textarea
+                      className="w-full sm:w-80 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all resize-none"
+                      rows={4}
+                      placeholder='("Product Manager" OR "PM") AND ("SaaS" OR "B2B")'
+                      value={scanKeywords}
+                      onChange={(e) => setScanKeywords(e.target.value)}
+                      onBlur={() => db.saveSettings(userId, { scanKeywords })}
+                    />
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div>
+                      <h4 className="font-bold text-slate-900">Scan Location</h4>
+                      <p className="text-xs text-slate-500 mt-1">City or region the Hunter searches. Defaults to Germany.</p>
+                    </div>
+                    <input
+                      type="text"
+                      className="w-full sm:w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
+                      placeholder="Germany"
+                      value={scanLocation}
+                      onChange={(e) => setScanLocation(e.target.value)}
+                      onBlur={() => db.saveSettings(userId, { scanLocation })}
+                    />
+                  </div>
+                </div>
+              </section>
             </div>
           )}
 
@@ -1118,36 +1167,6 @@ function AppContent() {
                       step={5}
                       value={matchThreshold}
                       onChange={(e) => { setMatchThreshold(Number(e.target.value)); db.saveSettings(userId, { matchThreshold: Number(e.target.value) }); }}
-                    />
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                    <div>
-                      <h4 className="font-bold text-slate-900">Hunter Keywords</h4>
-                      <p className="text-xs text-slate-500">Boolean search string the Hunter uses each morning. Manual edits are respected exactly as written.</p>
-                    </div>
-                    <textarea
-                      className="w-full sm:w-72 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all resize-none"
-                      rows={3}
-                      placeholder='("Product Manager" OR "PM") AND ("SaaS" OR "B2B")'
-                      value={scanKeywords}
-                      onChange={(e) => setScanKeywords(e.target.value)}
-                      onBlur={() => db.saveSettings(userId, { scanKeywords })}
-                    />
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                    <div>
-                      <h4 className="font-bold text-slate-900">Scan Location</h4>
-                      <p className="text-xs text-slate-500">City or region for the Hunter to search. Defaults to Germany.</p>
-                    </div>
-                    <input
-                      type="text"
-                      className="w-full sm:w-64 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold text-sm focus:ring-4 focus:ring-[#11ccf5]/20 focus:border-[#11ccf5] outline-none transition-all"
-                      placeholder="Germany"
-                      value={scanLocation}
-                      onChange={(e) => setScanLocation(e.target.value)}
-                      onBlur={() => db.saveSettings(userId, { scanLocation })}
                     />
                   </div>
 
