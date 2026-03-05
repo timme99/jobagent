@@ -43,7 +43,7 @@ export const synthesizeProfile = async (
     prompt += "Ensure the output strictly follows the provided JSON schema. Combine all information into a single unified profile.";
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // Pro is better for complex synthesis
+      model: 'gemini-2.0-flash-lite', // Fast, cost-efficient model for synthesis
       contents: prompt,
       config: {
         tools: profileUrl ? [{ googleSearch: {} }] : [],
@@ -93,7 +93,7 @@ export const refineStrategy = async (
 ): Promise<{ strategy: SearchStrategy; booleanKeywords: string }> => {
   return withRetry(async () => {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash-lite',
       contents: `You are a career strategy AI. Convert these unstructured career preferences and "messy thoughts" into:
 1. A rigorous Search Strategy
 2. A professional Boolean Search String for job boards (e.g. ("Digital Transformation" OR "AI Consultant") AND ("Manager" OR "Director") AND ("Remote" OR "Hybrid"))
@@ -143,7 +143,7 @@ export const scoreJobMatch = async (
   return withRetry(async () => {
     const description = jobData.description || 'No description provided';
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash-lite',
       contents: `
         Act as an expert technical recruiter. Cross-reference this Profile and Search Strategy against the Job Description.
 
@@ -203,7 +203,7 @@ export const fetchLiveJobs = async (keywords: string, location: string): Promise
     // We use googleSearch tool here to find REAL LinkedIn job postings.
     // Switching to Pro for better search grounding accuracy.
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.0-flash-lite',
       contents: `Search for real, currently active LinkedIn job postings for keywords: "${keywords}" in location: "${location}". 
                  You must find 5 authentic jobs. Extract their REAL URLs, job titles, company names, and full descriptions.
                  Return them as a JSON array of objects. Do not hallucinate URLs; only use valid links found during the search.`,
