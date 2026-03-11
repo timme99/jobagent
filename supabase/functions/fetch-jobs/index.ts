@@ -9,7 +9,7 @@
 //
 // Required Supabase secrets:
 //   JSEARCH_API_KEY  – RapidAPI key for JSearch (optional; BA-only if absent)
-//   GEMINI_API_KEY   – Google AI key for AI scoring of top 5 matches per user
+//   GEMINI_API_KEY   – Google AI key for AI scoring of top 10 matches per user
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
@@ -202,7 +202,7 @@ interface AiScoreResult {
 
 /**
  * Call Gemini REST API to score a single job against the candidate's profile.
- * Uses gemini-2.0-flash-lite — fast and cost-efficient, ideal for parallel scoring.
+ * Uses gemini-3.1-flash-lite-preview — fast and cost-efficient, ideal for parallel scoring.
  */
 async function scoreJobWithGemini(
   job: { title: string; company: string; location: string },
@@ -349,8 +349,8 @@ async function analyzeNewJobs(
     );
     allScored.push(...(chunkResults.filter(Boolean) as Array<AiScoreResult & { jobId: string }>));
 
-    // Small pause between chunks to avoid rate-limit pressure
-    if (i + CHUNK_SIZE < topJobs.length) await sleep(300);
+    // Small pause between chunks to avoid rate-limit pressure and Supabase timeout
+    if (i + CHUNK_SIZE < topJobs.length) await sleep(500);
   }
 
   console.log(`[AI] Scored ${allScored.length}/${topJobs.length} jobs successfully for user ${userId}`);
@@ -485,7 +485,7 @@ async function fetchJobsForUser(
   console.log(`[${userId}] Inserted ${insertedCount} new job(s)`);
   console.log(`DEBUG: Successfully processed ${insertedCount} jobs for user ${userId}`);
 
-  // ── Phase 3: AI Scout — score top 5 new jobs against the user's Master Profile
+  // ── Phase 3: AI Scout — score top 10 new jobs against the user's Master Profile
   if (geminiApiKey && insertedRows && insertedRows.length > 0) {
     await analyzeNewJobs(supabase, userId, insertedRows, keywords, geminiApiKey);
   } else if (!geminiApiKey) {
