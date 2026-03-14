@@ -57,6 +57,16 @@ function isServiceRoleToken(token: string, serviceRoleKey: string): boolean {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Strip Boolean operators and quotes for APIs that prefer plain space-separated terms. */
+function sanitizeKeywordsForBA(keywords: string): string {
+  return keywords
+    .replace(/\bOR\b/g, ' ')
+    .replace(/\bAND\b/g, ' ')
+    .replace(/"/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // ── Shared job shape ──────────────────────────────────────────────────────────
 
 interface NormalizedJob {
@@ -104,34 +114,21 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
     console.log('[BA] First job sample:', JSON.stringify(offers[0]).slice(0, 400));
   }
 
-  return offers.map((job: any, index: number) => {
+  return offers.map((job: any) => {
     const ort = [job.arbeitsort?.ort, job.arbeitsort?.region, job.arbeitsort?.land]
       .filter(Boolean)
       .join(', ');
 
-    // ── DEPLOYMENT CANARY: first job gets a hardcoded ID so we can confirm
-    //    new code is live. Remove this block once ID extraction is verified.
-    if (index === 0) {
-      console.log('[BA] CANARY: injecting DEBUG-123 for first job to confirm deployment');
-      return {
-        external_id: 'aa-DEBUG-123',
-        title: job.titel || job.beruf || 'Untitled Position',
-        company: job.arbeitgeber || 'Unknown Employer',
-        location: ort || 'Germany',
-        link: 'https://www.arbeitsagentur.de/jobsuche/jobdetail/DEBUG-123',
-        source: 'arbeitsagentur',
-      };
+    // Prefer the direct refnr field; fall back to regex scan of full JSON
+    let extractedId: string = job.refnr ?? '';
+    if (!extractedId) {
+      const jobJson = JSON.stringify(job);
+      extractedId = jobJson.match(/\d{5}-[\d-]{8,15}-S/)?.[0] ?? 'unknown';
+      if (extractedId === 'unknown') {
+        console.warn('[BA] Could not extract ID. Keys:', Object.keys(job).join(', '));
+      }
     }
-
-    // Scan the entire job object serialised as JSON — catches any field name.
-    const jobJson = JSON.stringify(job);
-    console.error('[BA] RAW JOB JSON (first 500):', jobJson.slice(0, 500));
-    const extractedId = jobJson.match(/\d{5}-[\d-]{8,15}-S/)?.[0] ?? 'unknown';
-    if (extractedId === 'unknown') {
-      console.warn('[BA] Could not extract ID from job JSON. Raw (200):', jobJson.slice(0, 200));
-    } else {
-      console.log('[BA] Extracted ID:', extractedId);
-    }
+    console.log('[BA] Extracted ID:', extractedId);
 
     return {
       external_id: `aa-${extractedId}`,
@@ -330,8 +327,8 @@ async function analyzeNewJobs(
 
   const allScored: Array<AiScoreResult & { jobId: string }> = [];
 
-  // Process in chunks of 5 to avoid hitting the 60s Supabase edge-function timeout
-  const CHUNK_SIZE = 5;
+  // Process in chunks of 3 to save results to DB more frequently before the 60s timeout
+  const CHUNK_SIZE = 3;
   for (let i = 0; i < topJobs.length; i += CHUNK_SIZE) {
     const chunk = topJobs.slice(i, i + CHUNK_SIZE);
     const chunkResults = await Promise.all(
@@ -398,13 +395,17 @@ async function fetchJobsForUser(
   const location: string = (settings.scan_location ?? '').trim() || 'Germany';
 
   if (!keywords) {
-    const fallback = 'Product Manager';
-    console.warn(`Skipping user ${userId} - No keywords defined; using fallback "${fallback}" for diagnostics`);
-    keywords = fallback;
+    console.warn(`[${userId}] Skipping — scan_keywords is empty. Set keywords in user settings.`);
+    return { inserted: 0, skipped: 0, errors: [] };
   }
 
   // 2. Phase 1 — Bundesagentur für Arbeit
-  const baJobs = await fetchBAJobs(keywords, location);
+  // BA API prefers plain space-separated terms; strip Boolean operators and quotes.
+  const baKeywords = sanitizeKeywordsForBA(keywords);
+  if (baKeywords !== keywords) {
+    console.log(`[${userId}] BA keywords sanitized: "${keywords}" → "${baKeywords}"`);
+  }
+  const baJobs = await fetchBAJobs(baKeywords, location);
 
   // 3. Phase 2 — JSearch (only if BA didn't return enough results)
   let jsearchJobs: NormalizedJob[] = [];
