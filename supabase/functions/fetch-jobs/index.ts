@@ -57,14 +57,25 @@ function isServiceRoleToken(token: string, serviceRoleKey: string): boolean {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Strip Boolean operators and quotes for APIs that prefer plain space-separated terms. */
-function sanitizeKeywordsForBA(keywords: string): string {
-  return keywords
-    .replace(/\bOR\b/g, ' ')
-    .replace(/\bAND\b/g, ' ')
-    .replace(/"/g, '')
-    .replace(/\s+/g, ' ')
+/** Aggressively strip Boolean operators, quotes, and parentheses for the BA API. */
+function sanitizeKeywordsForBA(raw: string): string {
+  return raw
+    .replace(/[()"""'']/g, '')       // remove all parentheses and quote variants
+    .replace(/\bOR\b/gi, ' ')       // remove OR (case-insensitive)
+    .replace(/\bAND\b/gi, ' ')      // remove AND (case-insensitive)
+    .replace(/[,;|+]/g, ' ')        // remove other common delimiters
+    .replace(/\s+/g, ' ')           // collapse whitespace
     .trim();
+}
+
+/** Simple deterministic hash for generating a stable ID from job title + company. */
+function simpleHash(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input.charCodeAt(i);
+    hash = ((hash << 5) - hash + ch) | 0; // force 32-bit int
+  }
+  return Math.abs(hash).toString(36);
 }
 
 // ── Shared job shape ──────────────────────────────────────────────────────────
@@ -111,7 +122,7 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
   // Log the field names of the first job so we can see exactly what the API returns
   if (offers.length > 0) {
     console.log('[BA] First job keys:', Object.keys(offers[0]).join(', '));
-    console.log('[BA] First job sample:', JSON.stringify(offers[0]).slice(0, 400));
+    console.debug('[BA] First job sample:', JSON.stringify(offers[0]).slice(0, 400));
   }
 
   return offers.map((job: any) => {
@@ -119,14 +130,14 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
       .filter(Boolean)
       .join(', ');
 
-    // Prefer the direct refnr field; fall back to regex scan of full JSON
-    let extractedId: string = job.refnr ?? '';
+    // Bulletproof ID extraction: refnr → hashId → deterministic hash
+    let extractedId: string = job.refnr ?? job.hashId ?? '';
     if (!extractedId) {
-      const jobJson = JSON.stringify(job);
-      extractedId = jobJson.match(/\d{5}-[\d-]{8,15}-S/)?.[0] ?? 'unknown';
-      if (extractedId === 'unknown') {
-        console.warn('[BA] Could not extract ID. Keys:', Object.keys(job).join(', '));
-      }
+      // Last resort: create a stable hash from title + company so we never skip a job
+      const title = job.titel || job.beruf || '';
+      const company = job.arbeitgeber || '';
+      extractedId = `gen-${simpleHash(title + '|' + company)}`;
+      console.log('[BA] Generated fallback ID from title+company:', extractedId);
     }
     console.log('[BA] Extracted ID:', extractedId);
 
@@ -323,7 +334,7 @@ async function analyzeNewJobs(
 
   // Top 10 — BA API already orders by relevance
   const topJobs = insertedJobs.slice(0, 10);
-  console.log(`[AI] Scoring ${topJobs.length} jobs for user ${userId} in chunks of 5...`);
+  console.log(`[AI] Scoring ${topJobs.length} jobs for user ${userId} in chunks of 3...`);
 
   const allScored: Array<AiScoreResult & { jobId: string }> = [];
 
@@ -389,14 +400,15 @@ async function fetchJobsForUser(
     return { inserted: 0, skipped: 0, errors: [msg] };
   }
 
-  // scan_keywords is the absolute source of truth — use it exactly as stored (manual edits are respected)
-  let keywords: string = (settings.scan_keywords ?? '').trim();
+  // scan_keywords is the absolute source of truth — use it exactly as stored
+  const keywords: string = (settings.scan_keywords ?? '').trim();
   // scan_location from DB is canonical; fall back to 'Germany' only when the field is empty
   const location: string = (settings.scan_location ?? '').trim() || 'Germany';
 
   if (!keywords) {
-    console.warn(`[${userId}] Skipping — scan_keywords is empty. Set keywords in user settings.`);
-    return { inserted: 0, skipped: 0, errors: [] };
+    const msg = `[${userId}] scan_keywords is null or empty — skipping this user. Configure keywords in user settings.`;
+    console.error(msg);
+    return { inserted: 0, skipped: 0, errors: [msg] };
   }
 
   // 2. Phase 1 — Bundesagentur für Arbeit
