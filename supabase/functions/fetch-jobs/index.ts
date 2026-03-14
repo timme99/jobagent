@@ -544,6 +544,7 @@ async function processAllUsers(
 // ── Request handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
+  console.log("--- DEPLOYMENT VERIFIED: VERSION 2.1 - MARCH 14 ---");
   // CORS preflight — always first, outside try/catch
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
