@@ -138,7 +138,7 @@ export async function saveJobMatches(
 export async function loadJobMatches(userId: string): Promise<JobMatch[]> {
   const { data, error } = await supabase
     .from('job_matches')
-    .select('*')
+    .select('id, user_id, title, company, location, description, score, reasoning, link, source, status, created_at')
     .eq('user_id', userId)
     .neq('status', 'dismissed')
     .order('created_at', { ascending: false });
@@ -149,7 +149,7 @@ export async function loadJobMatches(userId: string): Promise<JobMatch[]> {
 export async function loadShortlistedJobs(userId: string): Promise<JobMatch[]> {
   const { data, error } = await supabase
     .from('job_matches')
-    .select('*')
+    .select('id, user_id, title, company, location, description, score, reasoning, link, source, status, created_at')
     .eq('user_id', userId)
     .eq('status', 'accepted')
     .order('created_at', { ascending: false });
