@@ -1682,16 +1682,14 @@ function JobCard({
                 <div className="bg-slate-50 p-6 rounded-3xl text-sm text-slate-600 font-medium leading-relaxed border border-slate-100 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
                   {(match.reasoning as any)?.description_intel || (match.reasoning as any)?.summary || 'Analyzing alignment and extraction details...'}
                 </div>
-                {match.description && (
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors select-none">
-                      Full Job Description
-                    </summary>
-                    <div className="mt-3 bg-gray-50 p-4 rounded-2xl text-sm text-slate-600 whitespace-pre-wrap leading-relaxed border border-slate-100 max-h-96 overflow-y-auto custom-scrollbar">
-                      {match.description}
-                    </div>
-                  </details>
-                )}
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors select-none">
+                    Full Job Description
+                  </summary>
+                  <div className="mt-3 bg-gray-50 p-4 rounded-2xl text-sm text-slate-600 whitespace-pre-wrap leading-relaxed border border-slate-100 max-h-96 overflow-y-auto custom-scrollbar">
+                    {match.description || 'No full description available for this listing.'}
+                  </div>
+                </details>
              </div>
              <div className="space-y-6">
                 {((match.reasoning as any).ai_warnings || match.reasoning.riskFactors || []).length > 0 && (
