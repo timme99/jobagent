@@ -30,6 +30,10 @@ export interface JobMatch {
     pros: string[];
     cons: string[];
     riskFactors: string[];
+    strategic_pros: string[];
+    risk_analysis: string[];
+    ai_warnings: string[];
+    description_intel: string;
   };
   link: string;
   source?: string;
