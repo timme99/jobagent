@@ -154,6 +154,32 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
 
 // ── Phase 2: JSearch (RapidAPI) ──────────────────────────────────────────────
 
+// Maps location strings to ISO 3166-1 alpha-2 country codes for the JSearch country param.
+function getCountryCode(location: string): string {
+  const loc = location.toLowerCase();
+  if (/germany|berlin|munich|münchen|hamburg|frankfurt|cologne|köln|düsseldorf|stuttgart/.test(loc)) return 'de';
+  if (/spain|españa|madrid|barcelona|seville|sevilla|valencia/.test(loc)) return 'es';
+  if (/france|paris|lyon|marseille|toulouse|bordeaux/.test(loc)) return 'fr';
+  if (/netherlands|holland|amsterdam|rotterdam|den haag|eindhoven/.test(loc)) return 'nl';
+  if (/austria|österreich|vienna|wien|graz|salzburg/.test(loc)) return 'at';
+  if (/switzerland|schweiz|suisse|zurich|zürich|geneva|genf|basel/.test(loc)) return 'ch';
+  if (/uk|united kingdom|england|london|manchester|birmingham|edinburgh/.test(loc)) return 'gb';
+  if (/canada|toronto|vancouver|montreal|calgary|ottawa/.test(loc)) return 'ca';
+  if (/australia|sydney|melbourne|brisbane|perth|adelaide/.test(loc)) return 'au';
+  if (/poland|polska|warsaw|warszawa|krakow|kraków|wroclaw|wrocław/.test(loc)) return 'pl';
+  if (/italy|italia|rome|roma|milan|milano|florence|firenze|naples|napoli/.test(loc)) return 'it';
+  if (/sweden|stockholm/.test(loc)) return 'se';
+  if (/denmark|copenhagen/.test(loc)) return 'dk';
+  if (/norway|oslo/.test(loc)) return 'no';
+  if (/ireland|dublin/.test(loc)) return 'ie';
+  if (/portugal|lisbon|porto/.test(loc)) return 'pt';
+  if (/belgium|brussels/.test(loc)) return 'be';
+  if (/japan|tokyo/.test(loc)) return 'jp';
+  if (/singapore/.test(loc)) return 'sg';
+  if (/israel|tel aviv/.test(loc)) return 'il';
+  return 'us';
+}
+
 // Strips Boolean operators so plain-text search APIs return results.
 // The original keywords string is kept for Gemini scoring (strict AI filter).
 function simplifyKeywordsForJSearch(keywords: string): string {
@@ -175,9 +201,14 @@ async function fetchJSearchJobs(
     console.log(`[JSearch] Boolean keywords detected — simplified for API: "${searchKeywords}"`);
   }
   const query = `${searchKeywords} in ${location}`;
-  const params = new URLSearchParams({ query, page: '1', num_pages: '1' });
-
-  const jsearchUrl = `https://jsearch.p.rapidapi.com/search?${params}`;
+  const countryCode = getCountryCode(location);
+  const jsearchUrl =
+    `https://jsearch.p.rapidapi.com/search` +
+    `?query=${encodeURIComponent(query)}` +
+    `&country=${countryCode}` +
+    `&page=1` +
+    `&num_pages=1` +
+    `&date_posted=all`;
   console.log(`[JSearch] Request URL: ${jsearchUrl}`);
   console.log(`[JSearch] Headers: X-RapidAPI-Key=***${jsearchApiKey.slice(-4)}, X-RapidAPI-Host=jsearch.p.rapidapi.com`);
 
