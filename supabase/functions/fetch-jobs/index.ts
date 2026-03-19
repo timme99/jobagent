@@ -156,12 +156,27 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
 
 // ── Phase 2: JSearch (RapidAPI) ──────────────────────────────────────────────
 
+// Strips Boolean operators so plain-text search APIs return results.
+// The original keywords string is kept for Gemini scoring (strict AI filter).
+function simplifyKeywordsForJSearch(keywords: string): string {
+  return keywords
+    .replace(/\bAND\b/gi, ' ')
+    .replace(/\bOR\b/gi, ' ')
+    .replace(/[()]/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 async function fetchJSearchJobs(
   keywords: string,
   location: string,
   jsearchApiKey: string,
 ): Promise<NormalizedJob[]> {
-  const query = `${keywords} in ${location}`;
+  const searchKeywords = simplifyKeywordsForJSearch(keywords);
+  if (searchKeywords !== keywords) {
+    console.log(`[JSearch] Boolean keywords detected — simplified for API: "${searchKeywords}"`);
+  }
+  const query = `${searchKeywords} in ${location}`;
   const params = new URLSearchParams({ query, page: '1', num_pages: '1' });
 
   const jsearchUrl = `https://jsearch.p.rapidapi.com/search?${params}`;

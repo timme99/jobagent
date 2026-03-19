@@ -85,11 +85,16 @@ export async function loadStrategy(
 // ── Job Matches ───────────────────────────────────────────────────────
 
 // Always produces the exact shape the DB column expects.
-function normalizeReasoning(r: any): { pros: string[]; cons: string[]; riskFactors: string[] } {
+function normalizeReasoning(r: any): JobMatch['reasoning'] {
+  const parsed = typeof r === 'string' ? JSON.parse(r) : (r ?? {});
   return {
-    pros: Array.isArray(r?.pros) ? r.pros : [],
-    cons: Array.isArray(r?.cons) ? r.cons : [],
-    riskFactors: Array.isArray(r?.riskFactors) ? r.riskFactors : [],
+    pros: Array.isArray(parsed?.pros) ? parsed.pros : [],
+    cons: Array.isArray(parsed?.cons) ? parsed.cons : [],
+    riskFactors: Array.isArray(parsed?.riskFactors) ? parsed.riskFactors : [],
+    strategic_pros: Array.isArray(parsed?.strategic_pros) ? parsed.strategic_pros : [],
+    risk_analysis: Array.isArray(parsed?.risk_analysis) ? parsed.risk_analysis : [],
+    ai_warnings: Array.isArray(parsed?.ai_warnings) ? parsed.ai_warnings : [],
+    description_intel: typeof parsed?.description_intel === 'string' ? parsed.description_intel : '',
   };
 }
 
