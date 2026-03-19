@@ -1680,8 +1680,18 @@ function JobCard({
              <div className="lg:col-span-2 space-y-4">
                 <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest">Description Intel</h5>
                 <div className="bg-slate-50 p-6 rounded-3xl text-sm text-slate-600 font-medium leading-relaxed border border-slate-100 max-h-64 overflow-y-auto custom-scrollbar whitespace-pre-wrap">
-                  {(match.reasoning as any)?.description_intel || match.description || (match.reasoning as any)?.summary || 'Analyzing alignment and extraction details...'}
+                  {(match.reasoning as any)?.description_intel || (match.reasoning as any)?.summary || 'Analyzing alignment and extraction details...'}
                 </div>
+                {match.description && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors select-none">
+                      Full Job Description
+                    </summary>
+                    <div className="mt-3 bg-gray-50 p-4 rounded-2xl text-sm text-slate-600 whitespace-pre-wrap leading-relaxed border border-slate-100 max-h-96 overflow-y-auto custom-scrollbar">
+                      {match.description}
+                    </div>
+                  </details>
+                )}
              </div>
              <div className="space-y-6">
                 {((match.reasoning as any).ai_warnings || match.reasoning.riskFactors || []).length > 0 && (

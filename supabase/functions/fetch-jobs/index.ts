@@ -85,6 +85,7 @@ interface NormalizedJob {
   title: string;
   company: string;
   location: string;
+  description: string;
   link: string;
   source: string;
 }
@@ -146,6 +147,7 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
       title: job.titel || job.beruf || 'Untitled Position',
       company: job.arbeitgeber || 'Unknown Employer',
       location: ort || 'Germany',
+      description: '',
       link: `https://www.arbeitsagentur.de/jobsuche/jobdetail/${extractedId}`,
       source: 'arbeitsagentur',
     };
@@ -190,6 +192,7 @@ async function fetchJSearchJobs(
       title: job.job_title || 'Untitled Position',
       company: job.employer_name || 'Unknown Company',
       location: job.job_is_remote ? `Remote (${loc})` : loc || 'Not specified',
+      description: job.job_description ?? '',
       link: job.job_apply_link || job.job_google_link || '',
       source: 'jsearch',
     };
@@ -209,16 +212,19 @@ interface AiScoreResult {
 }
 
 /**
- * Call Gemini REST API to score a single job against the candidate's profile.
- * Uses gemini-3.1-flash-lite-preview — fast and cost-efficient, ideal for parallel scoring.
+ * Call Gemini REST API to score a BATCH of jobs (5–10) against the candidate's profile
+ * in a single API call. Uses gemini-3.1-flash-lite-preview for cost efficiency.
+ * Returns an array of results keyed by the job's position index in the input array.
  */
-async function scoreJobWithGemini(
-  job: { title: string; company: string; location: string },
+async function scoreJobsBatch(
+  jobs: Array<{ id: string; title: string; company: string; location: string; description: string }>,
   profile: { name: string; summary: string; skills: string[]; experience: any[]; hidden_strengths: string[] },
   strategy: { priorities: string[]; dealbreakers: string[]; seniority_level: string; location_preference: string } | null,
   keywords: string,
   geminiApiKey: string,
-): Promise<AiScoreResult | null> {
+): Promise<Array<AiScoreResult & { jobId: string }>> {
+  if (jobs.length === 0) return [];
+
   const recentRoles = (profile.experience ?? [])
     .slice(0, 3)
     .map((e: any) => `${e.role} at ${e.company}`)
@@ -228,7 +234,14 @@ async function scoreJobWithGemini(
     ? `\nPriorities: ${(strategy.priorities ?? []).slice(0, 3).join(', ')}\nDealbreakers: ${(strategy.dealbreakers ?? []).slice(0, 3).join(', ')}\nSeniority: ${strategy.seniority_level}`
     : '';
 
-  const prompt = `You are a career AI scout. Score this job for the candidate. Return ONLY valid JSON, nothing else.
+  const jobsList = jobs
+    .map((job, i) => {
+      const descSnippet = job.description ? `\n   Description: ${job.description.slice(0, 300)}` : '';
+      return `${i + 1}. Title: ${job.title}\n   Company: ${job.company}\n   Location: ${job.location}${descSnippet}`;
+    })
+    .join('\n\n');
+
+  const prompt = `You are a career AI scout. Score these ${jobs.length} jobs for the candidate. Return ONLY a valid JSON array, nothing else.
 
 CANDIDATE:
 Name: ${profile.name || 'Candidate'}
@@ -237,23 +250,24 @@ Skills: ${(profile.skills ?? []).slice(0, 15).join(', ')}
 Recent Roles: ${recentRoles}
 Target Keywords: ${keywords}${strategyContext}
 
-JOB:
-Title: ${job.title}
-Company: ${job.company}
-Location: ${job.location}
+JOBS TO SCORE:
+${jobsList}
 
-Score 0-100 where 90+=perfect strategic fit, 70-89=strong match, 50-69=moderate, <50=poor.
-Return exactly this JSON and nothing else:
-{
-  "score": N,
-  "reasoning": {
-    "strategic_pros": ["why this fits their skills/goals", "another pro"],
-    "risk_analysis": ["gap or concern", "another concern"],
-    "ai_warnings": ["hard dealbreaker if any, else empty"],
-    "description_intel": "One sentence describing what this role actually does."
+Score each job 0-100 where 90+=perfect strategic fit, 70-89=strong match, 50-69=moderate, <50=poor.
+Return exactly this JSON array with one entry per job (same order, 1-indexed):
+[
+  {
+    "job_index": 1,
+    "score": N,
+    "reasoning": {
+      "strategic_pros": ["why this fits their skills/goals"],
+      "risk_analysis": ["gap or concern"],
+      "ai_warnings": ["hard dealbreaker if any, else empty"],
+      "description_intel": "One sentence describing what this role actually does."
+    }
   }
-}
-Keep strategic_pros and risk_analysis to 2-3 items. ai_warnings can be empty array.`;
+]
+Keep strategic_pros and risk_analysis to 2-3 items each. ai_warnings can be empty array.`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${geminiApiKey}`,
@@ -264,7 +278,7 @@ Keep strategic_pros and risk_analysis to 2-3 items. ai_warnings can be empty arr
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 500,
+          maxOutputTokens: 1500,
           responseMimeType: 'application/json',
         },
       }),
@@ -273,43 +287,101 @@ Keep strategic_pros and risk_analysis to 2-3 items. ai_warnings can be empty arr
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error(`[AI] Gemini API error ${res.status}:`, errText.slice(0, 200));
-    return null;
+    console.error(`[AI] Gemini batch API error ${res.status}:`, errText.slice(0, 200));
+    return [];
   }
 
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   if (!text) {
-    console.error('[AI] Empty response from Gemini');
-    return null;
+    console.error('[AI] Empty batch response from Gemini');
+    return [];
   }
 
-  const parsed = JSON.parse(text);
-  const r = parsed.reasoning ?? {};
-  return {
-    score: typeof parsed.score === 'number' ? Math.min(100, Math.max(0, Math.round(parsed.score))) : 0,
-    reasoning: {
-      strategic_pros: Array.isArray(r.strategic_pros) ? r.strategic_pros : [],
-      risk_analysis:  Array.isArray(r.risk_analysis)  ? r.risk_analysis  : [],
-      ai_warnings:    Array.isArray(r.ai_warnings)    ? r.ai_warnings    : [],
-      description_intel: typeof r.description_intel === 'string' ? r.description_intel : '',
+  let parsed: any[];
+  try {
+    parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) parsed = [];
+  } catch {
+    console.error('[AI] Failed to parse batch response JSON');
+    return [];
+  }
+
+  const results: Array<AiScoreResult & { jobId: string }> = [];
+  for (const item of parsed) {
+    const idx = (item.job_index ?? 0) - 1;
+    if (idx < 0 || idx >= jobs.length) continue;
+    const r = item.reasoning ?? {};
+    results.push({
+      jobId: jobs[idx].id,
+      score: typeof item.score === 'number' ? Math.min(100, Math.max(0, Math.round(item.score))) : 0,
+      reasoning: {
+        strategic_pros: Array.isArray(r.strategic_pros) ? r.strategic_pros : [],
+        risk_analysis:  Array.isArray(r.risk_analysis)  ? r.risk_analysis  : [],
+        ai_warnings:    Array.isArray(r.ai_warnings)    ? r.ai_warnings    : [],
+        description_intel: typeof r.description_intel === 'string' ? r.description_intel : '',
+      },
+    });
+  }
+  return results;
+}
+
+/**
+ * Call gemini-3.1-pro-preview to synthesize a brief executive summary of top matches.
+ * Called once at the end of analyzeNewJobs — logged to console only (no schema change).
+ */
+async function synthesizeDailyDigest(
+  topJobs: Array<{ title: string; company: string; score: number; pros: string[] }>,
+  geminiApiKey: string,
+): Promise<void> {
+  if (topJobs.length === 0) return;
+
+  const jobSummary = topJobs
+    .map((j, i) => `${i + 1}. "${j.title}" at ${j.company} (${j.score}%) — ${j.pros.slice(0, 2).join('; ')}`)
+    .join('\n');
+
+  const prompt = `You are a strategic career advisor. In 2-3 sentences, synthesize an executive summary for a job seeker about their top matches today. Be direct and actionable.
+
+TOP MATCHES:
+${jobSummary}
+
+Return only the summary text, no headers or labels.`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiApiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 200 },
+      }),
     },
-  };
+  );
+
+  if (!res.ok) {
+    console.warn(`[DIGEST] Pro preview synthesis failed (${res.status}) — skipping`);
+    return;
+  }
+
+  const data = await res.json();
+  const summary = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  if (summary) console.log(`[DIGEST] Strategic summary: ${summary.trim()}`);
 }
 
 /**
  * After inserting new jobs, score the top 10 against the user's Master Profile.
- * Jobs are processed in chunks of 5 to stay well within the 60s Supabase timeout.
+ * Jobs are processed in batches of 5 (one Gemini call per batch) to save tokens.
+ * Also runs recovery mode for any existing unscored jobs (score=0).
+ * Cross-user score reuse is applied before calling Gemini for further token savings.
  */
 async function analyzeNewJobs(
   supabase: ReturnType<typeof createClient>,
   userId: string,
-  insertedJobs: Array<{ id: string; title: string; company: string; location: string }>,
+  insertedJobs: Array<{ id: string; title: string; company: string; location: string; description?: string }>,
   keywords: string,
   geminiApiKey: string,
 ): Promise<void> {
-  if (insertedJobs.length === 0) return;
-
   // Load profile + strategy in parallel
   const [profileRes, strategyRes] = await Promise.all([
     supabase
@@ -332,36 +404,102 @@ async function analyzeNewJobs(
   const profile = profileRes.data;
   const strategy = strategyRes.data ?? null;
 
-  // Top 10 — BA API already orders by relevance
-  const topJobs = insertedJobs.slice(0, 10);
-  console.log(`[AI] Scoring ${topJobs.length} jobs for user ${userId} in chunks of 3...`);
+  // ── Recovery Mode: pick up previously unscored jobs ──────────────────────
+  const { data: recoveryRows } = await supabase
+    .from('job_matches')
+    .select('id, title, company, location, description, link')
+    .eq('user_id', userId)
+    .eq('score', 0)
+    .eq('status', 'pending')
+    .not('id', 'in', `(${insertedJobs.map(j => `'${j.id}'`).join(',') || "''"})`)
+    .limit(5);
 
-  const allScored: Array<AiScoreResult & { jobId: string }> = [];
+  const recoveryJobs = (recoveryRows ?? []).map((r: any) => ({
+    id: r.id,
+    title: r.title,
+    company: r.company,
+    location: r.location,
+    description: r.description ?? '',
+    link: r.link ?? '',
+  }));
 
-  // Process in chunks of 3 to save results to DB more frequently before the 60s timeout
-  const CHUNK_SIZE = 3;
-  for (let i = 0; i < topJobs.length; i += CHUNK_SIZE) {
-    const chunk = topJobs.slice(i, i + CHUNK_SIZE);
-    const chunkResults = await Promise.all(
-      chunk.map(async (job) => {
-        try {
-          const result = await scoreJobWithGemini(job, profile, strategy, keywords, geminiApiKey);
-          if (!result) return null;
-          console.log(`[AI] "${job.title}" → ${result.score}%`);
-          return { jobId: job.id, ...result };
-        } catch (err: any) {
-          console.error(`[AI] Failed to score "${job.title}" (${job.id}):`, err.message);
-          return null;
-        }
-      }),
-    );
-    allScored.push(...(chunkResults.filter(Boolean) as Array<AiScoreResult & { jobId: string }>));
-
-    // Small pause between chunks to avoid rate-limit pressure and Supabase timeout
-    if (i + CHUNK_SIZE < topJobs.length) await sleep(500);
+  if (recoveryJobs.length > 0) {
+    console.log(`[AI] Recovery mode: found ${recoveryJobs.length} previously unscored job(s)`);
   }
 
-  console.log(`[AI] Scored ${allScored.length}/${topJobs.length} jobs successfully for user ${userId}`);
+  // Combine new + recovery jobs; take top 10 total
+  const newJobsWithDesc = insertedJobs.slice(0, 10).map(j => ({
+    ...j,
+    description: (j as any).description ?? '',
+    link: (j as any).link ?? '',
+  }));
+  const allJobsToScore = [...newJobsWithDesc, ...recoveryJobs].slice(0, 10);
+
+  if (allJobsToScore.length === 0) {
+    console.log(`[AI] No jobs to score for user ${userId}`);
+    return;
+  }
+
+  // ── Pre-IA Security Filter: skip jobs with very short descriptions ────────
+  const jobsPassingFilter = allJobsToScore.filter(job => {
+    if (job.description && job.description.length > 0 && job.description.length < 200) {
+      console.log(`[AI] Skipping "${job.title}" — description too short (${job.description.length} chars) for reliable scoring`);
+      return false;
+    }
+    return true;
+  });
+
+  console.log(`[AI] Scoring ${jobsPassingFilter.length} job(s) for user ${userId} (${allJobsToScore.length - jobsPassingFilter.length} skipped by pre-IA filter)`);
+
+  // ── Global Data Strategy: reuse scores from other users ──────────────────
+  const jobLinks = jobsPassingFilter.map(j => j.link).filter(Boolean);
+  const reuseMap = new Map<string, { score: number; reasoning: any }>();
+
+  if (jobLinks.length > 0) {
+    const { data: existingScores } = await supabase
+      .from('job_matches')
+      .select('link, score, reasoning')
+      .in('link', jobLinks)
+      .gt('score', 0);
+
+    for (const row of existingScores ?? []) {
+      if (row.link && !reuseMap.has(row.link)) {
+        reuseMap.set(row.link, { score: row.score, reasoning: row.reasoning });
+      }
+    }
+  }
+
+  const reusedJobs: Array<AiScoreResult & { jobId: string }> = [];
+  const jobsNeedingGemini = jobsPassingFilter.filter(job => {
+    const reused = job.link ? reuseMap.get(job.link) : undefined;
+    if (reused) {
+      console.log(`[AI] Reusing score for "${job.title}" from another user (${reused.score}%)`);
+      reusedJobs.push({ jobId: job.id, score: reused.score, reasoning: reused.reasoning });
+      return false;
+    }
+    return true;
+  });
+
+  // ── Batch Scoring with Gemini Flash Lite ─────────────────────────────────
+  const allScored: Array<AiScoreResult & { jobId: string }> = [...reusedJobs];
+
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < jobsNeedingGemini.length; i += BATCH_SIZE) {
+    const batch = jobsNeedingGemini.slice(i, i + BATCH_SIZE);
+    console.log(`[AI] Scoring batch of ${batch.length} job(s) (positions ${i + 1}–${i + batch.length})...`);
+    try {
+      const batchResults = await scoreJobsBatch(batch, profile, strategy, keywords, geminiApiKey);
+      for (const r of batchResults) {
+        console.log(`[AI] "${batch.find(j => j.id === r.jobId)?.title}" → ${r.score}%`);
+      }
+      allScored.push(...batchResults);
+    } catch (err: any) {
+      console.error(`[AI] Batch scoring failed for positions ${i + 1}–${i + batch.length}:`, err.message);
+    }
+    if (i + BATCH_SIZE < jobsNeedingGemini.length) await sleep(500);
+  }
+
+  console.log(`[AI] Scored ${allScored.length}/${jobsPassingFilter.length} jobs for user ${userId}`);
 
   // Write scores back — all parallel, per-row failure logged but non-blocking
   await Promise.all(
@@ -375,6 +513,22 @@ async function analyzeNewJobs(
         }),
     ),
   );
+
+  // ── Final Digest Synthesis with gemini-3.1-pro-preview ───────────────────
+  const topScored = [...allScored]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(r => {
+      const job = allJobsToScore.find(j => j.id === r.jobId);
+      return {
+        title: job?.title ?? 'Unknown',
+        company: job?.company ?? 'Unknown',
+        score: r.score,
+        pros: r.reasoning.strategic_pros,
+      };
+    });
+
+  await synthesizeDailyDigest(topScored, geminiApiKey);
 }
 
 // ── Core: fetch & store jobs for one user ────────────────────────────────────
@@ -474,6 +628,7 @@ async function fetchJobsForUser(
     title: job.title,
     company: job.company,
     location: job.location,
+    description: job.description ?? '',
     link: job.link,
     source: job.source,
     score: 0,
@@ -485,7 +640,7 @@ async function fetchJobsForUser(
   const { data: insertedRows, error: insertError } = await supabase
     .from('job_matches')
     .insert(rows)
-    .select('id, title, company, location');
+    .select('id, title, company, location, description, link');
 
   if (insertError) {
     const msg = `Insert failed for ${userId}: ${insertError.message}`;
@@ -544,7 +699,7 @@ async function processAllUsers(
 // ── Request handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
-  console.log("--- DEPLOYMENT VERIFIED: VERSION 2.1 - MARCH 14 ---");
+  console.log('--- DEPLOYMENT VERIFIED: VERSION 3.1 ---');
   // CORS preflight — always first, outside try/catch
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 

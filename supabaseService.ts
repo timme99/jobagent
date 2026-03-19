@@ -109,12 +109,12 @@ export async function saveJobMatches(
       title: m.title,
       company: m.company,
       location: m.location ?? '',
+      description: m.description ?? '',
       score: m.score,
       reasoning: normalizeReasoning(m.reasoning), // { pros, cons, riskFactors }
       link: m.link ?? '',
       status: 'pending' as const,
       source: m.source || 'manual',
-      // `description` is omitted — it is not a column in the job_matches schema.
     }));
 
   if (rows.length === 0) return [];
