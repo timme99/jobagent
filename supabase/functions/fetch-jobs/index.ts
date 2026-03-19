@@ -180,7 +180,8 @@ async function fetchJSearchJobs(
   const params = new URLSearchParams({ query, page: '1', num_pages: '1' });
 
   const jsearchUrl = `https://jsearch.p.rapidapi.com/search?${params}`;
-  console.log(`[JSearch] URL: ${jsearchUrl}`);
+  console.log(`[JSearch] Request URL: ${jsearchUrl}`);
+  console.log(`[JSearch] Headers: X-RapidAPI-Key=***${jsearchApiKey.slice(-4)}, X-RapidAPI-Host=jsearch.p.rapidapi.com`);
 
   const res = await fetch(jsearchUrl, {
     method: 'GET',
@@ -191,14 +192,20 @@ async function fetchJSearchJobs(
   });
 
   if (!res.ok) {
+    const errorBody = await res.text();
     console.error(`[JSearch] API error: ${res.status} ${res.statusText}`);
+    console.error(`[JSearch] Error body: ${errorBody}`);
     return [];
   }
 
   const data = await res.json();
   const jobs: any[] = (data.data ?? []).slice(0, 10);
 
-  console.log(`[JSearch] Received ${jobs.length} result(s)`);
+  if (jobs.length === 0) {
+    console.warn(`[JSearch] 0 results. Full response: ${JSON.stringify(data)}`);
+  } else {
+    console.log(`[JSearch] Received ${jobs.length} result(s)`);
+  }
 
   return jobs.map((job: any) => {
     const loc = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ');
