@@ -18,8 +18,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 const BA_API_URL = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';
 const BA_PAGE_SIZE = 25;
-// Supplement with JSearch when BA returns fewer results than this threshold.
-const JSEARCH_MIN_TRIGGER = 10;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -595,19 +593,17 @@ async function fetchJobsForUser(
   }
   const baJobs = await fetchBAJobs(baKeywords, location);
 
-  // 3. Phase 2 — JSearch (only if BA didn't return enough results)
+  // 3. Phase 2 — JSearch (always runs alongside BA to supplement with descriptions)
   let jsearchJobs: NormalizedJob[] = [];
-  if (baJobs.length < JSEARCH_MIN_TRIGGER) {
-    if (jsearchApiKey) {
-      console.log(
-        `[${userId}] BA returned ${baJobs.length} < ${JSEARCH_MIN_TRIGGER} — supplementing with JSearch`,
-      );
+  if (jsearchApiKey) {
+    console.log(`[${userId}] Running JSearch in parallel (BA returned ${baJobs.length} result(s))`);
+    try {
       jsearchJobs = await fetchJSearchJobs(keywords, location, jsearchApiKey);
-    } else {
-      console.log(
-        `[${userId}] BA returned ${baJobs.length} results but JSEARCH_API_KEY not set — skipping JSearch`,
-      );
+    } catch (err) {
+      console.error(`[${userId}] JSearch fetch failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+  } else {
+    console.log(`[${userId}] JSEARCH_API_KEY not set — skipping JSearch`);
   }
 
   const allJobs = [...baJobs, ...jsearchJobs];
