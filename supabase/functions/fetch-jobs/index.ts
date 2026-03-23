@@ -719,25 +719,41 @@ async function processAllUsers(
   jsearchApiKey: string | null,
   geminiApiKey: string | null,
 ): Promise<Record<string, unknown>[]> {
-  const { data: allSettings, error: settingsError } = await supabase
+  // Use a fresh service-role client so this function is never accidentally called
+  // with an anon key (which would make RLS silently return 0 rows).
+  const serviceSupabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  );
+
+  console.log('[SYSTEM] Querying user_settings (automation_enabled=true) with service-role client...');
+
+  const { data: allSettings, error: settingsError } = await serviceSupabase
     .from('user_settings')
     .select('user_id, scan_keywords')
     .eq('automation_enabled', true);
 
   if (settingsError) {
-    console.error('Failed to load user_settings:', settingsError.message);
+    console.error('[SYSTEM] Failed to load user_settings:', settingsError.message);
     return [{ error: 'Failed to load user_settings', details: settingsError.message }];
   }
 
   const users = allSettings ?? [];
+  console.log(`[SYSTEM] Found ${users.length} users to scan.`);
+
+  if (users.length === 0) {
+    console.warn('[SYSTEM] No users with automation_enabled=true found — loop will not run. Check the user_settings table.');
+    return [];
+  }
+
   console.log(`[SYSTEM] Starting global scan for ${users.length} users....`);
 
   const results: Record<string, unknown>[] = [];
 
   for (const s of users) {
-    console.log('Processing user:', s.user_id, 'Keywords:', s.scan_keywords || '(none)');
+    console.log(`[SYSTEM] Processing user: ${s.user_id} | Keywords: ${s.scan_keywords || '(none)'}`);
     try {
-      const result = await fetchJobsForUser(supabase, s.user_id, jsearchApiKey, geminiApiKey);
+      const result = await fetchJobsForUser(serviceSupabase, s.user_id, jsearchApiKey, geminiApiKey);
       results.push({ userId: s.user_id, ...result });
     } catch (err: any) {
       console.error(`[SYSTEM] Error processing user ${s.user_id}:`, err?.message ?? String(err));
