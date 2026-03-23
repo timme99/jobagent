@@ -96,6 +96,7 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
     wo: location,
     page: '1',
     size: String(BA_PAGE_SIZE),
+    _t: String(Date.now()),
   });
 
   const baUrl = `${BA_API_URL}?${params}`;
@@ -208,7 +209,8 @@ async function fetchJSearchJobs(
     `&country=${countryCode}` +
     `&page=1` +
     `&num_pages=1` +
-    `&date_posted=all`;
+    `&date_posted=all` +
+    `&_t=${Date.now()}`;
   console.log(`[JSearch] Request URL: ${jsearchUrl}`);
   console.log(`[JSearch] Headers: X-RapidAPI-Key=***${jsearchApiKey.slice(-4)}, X-RapidAPI-Host=jsearch.p.rapidapi.com`);
 
@@ -650,7 +652,7 @@ async function fetchJobsForUser(
   const candidateLinks = allJobs.map((j) => j.link).filter(Boolean);
   const { data: existing, error: existingError } = await supabase
     .from('job_matches')
-    .select('link')
+    .select('id, link')
     .eq('user_id', userId)
     .in('link', candidateLinks);
 
@@ -661,11 +663,24 @@ async function fetchJobsForUser(
     // Continue with best-effort deduplication (existingLinks will be empty)
   }
 
-  const existingLinks = new Set((existing ?? []).map((r: any) => r.link));
+  const existingRows = existing ?? [];
+  const existingLinks = new Set(existingRows.map((r: any) => r.link));
   const newJobs = allJobs.filter((j) => j.link && !existingLinks.has(j.link));
   const skippedCount = allJobs.length - newJobs.length;
 
   console.log(`[${userId}] New: ${newJobs.length} | Already in DB: ${skippedCount}`);
+
+  // TEMP: touch created_at on already-existing rows so they re-surface past the
+  // March 20 cache boundary — lets us confirm the DB write path is working.
+  if (existingRows.length > 0) {
+    const existingIds = existingRows.map((r: any) => r.id);
+    const { data: touchData, error: touchError } = await supabase
+      .from('job_matches')
+      .update({ created_at: new Date().toISOString() })
+      .in('id', existingIds)
+      .select('id');
+    console.log(`[${userId}] Touch existing rows result:`, { touched: touchData?.length ?? 0, error: touchError?.message ?? null });
+  }
 
   if (newJobs.length === 0) {
     return { inserted: 0, skipped: skippedCount, errors };
@@ -690,6 +705,8 @@ async function fetchJobsForUser(
     .from('job_matches')
     .insert(rows)
     .select('id, title, company, location, description, link');
+
+  console.log('Database Result:', { data: insertedRows?.length ?? null, error: insertError?.message ?? null });
 
   if (insertError) {
     const msg = `Insert failed for ${userId}: ${insertError.message}`;
@@ -771,7 +788,7 @@ async function processAllUsers(
 // ── Request handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
-  console.log('--- DEPLOYMENT VERIFIED: VERSION 3.2 ---');
+  console.log('--- DEPLOYMENT VERIFIED: VERSION 3.3 ---');
   // CORS preflight — always first, outside try/catch
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
