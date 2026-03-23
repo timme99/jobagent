@@ -719,11 +719,13 @@ async function processAllUsers(
   jsearchApiKey: string | null,
   geminiApiKey: string | null,
 ): Promise<Record<string, unknown>[]> {
-  // Use a fresh service-role client so this function is never accidentally called
-  // with an anon key (which would make RLS silently return 0 rows).
+  // Explicitly build a service-role client with persistSession:false so the
+  // Supabase SDK never tries browser-style session management inside a Deno
+  // edge function (which silently degrades to anon auth and RLS blocks all rows).
   const serviceSupabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    { auth: { persistSession: false } },
   );
 
   console.log('[SYSTEM] Querying user_settings (automation_enabled=true) with service-role client...');
@@ -738,8 +740,9 @@ async function processAllUsers(
     return [{ error: 'Failed to load user_settings', details: settingsError.message }];
   }
 
+  console.log('[SYSTEM] Profiles found in DB:', allSettings?.length || 0);
+
   const users = allSettings ?? [];
-  console.log(`[SYSTEM] Found ${users.length} users to scan.`);
 
   if (users.length === 0) {
     console.warn('[SYSTEM] No users with automation_enabled=true found — loop will not run. Check the user_settings table.');
@@ -783,7 +786,7 @@ serve(async (req: Request) => {
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY') ?? null;
 
     // Always use the service-role client for DB writes so RLS doesn't block inserts.
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
