@@ -96,6 +96,7 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
     wo: location,
     page: '1',
     size: String(BA_PAGE_SIZE),
+    _t: String(Date.now()),
   });
 
   const baUrl = `${BA_API_URL}?${params}`;
@@ -157,7 +158,7 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
 // Maps location strings to ISO 3166-1 alpha-2 country codes for the JSearch country param.
 function getCountryCode(location: string): string {
   const loc = location.toLowerCase();
-  if (/germany|berlin|munich|münchen|hamburg|frankfurt|cologne|köln|düsseldorf|stuttgart/.test(loc)) return 'de';
+  if (/germany|deutschland|berlin|munich|münchen|hamburg|frankfurt|cologne|köln|düsseldorf|stuttgart/.test(loc)) return 'de';
   if (/spain|españa|madrid|barcelona|seville|sevilla|valencia/.test(loc)) return 'es';
   if (/france|paris|lyon|marseille|toulouse|bordeaux/.test(loc)) return 'fr';
   if (/netherlands|holland|amsterdam|rotterdam|den haag|eindhoven/.test(loc)) return 'nl';
@@ -186,7 +187,7 @@ function simplifyKeywordsForJSearch(keywords: string): string {
   return keywords
     .replace(/\bAND\b/gi, ' ')
     .replace(/\bOR\b/gi, ' ')
-    .replace(/[()]/g, ' ')
+    .replace(/[()"""'']/g, ' ')   // strip parentheses and all quote variants
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -208,7 +209,8 @@ async function fetchJSearchJobs(
     `&country=${countryCode}` +
     `&page=1` +
     `&num_pages=1` +
-    `&date_posted=all`;
+    `&date_posted=all` +
+    `&_t=${Date.now()}`;
   console.log(`[JSearch] Request URL: ${jsearchUrl}`);
   console.log(`[JSearch] Headers: X-RapidAPI-Key=***${jsearchApiKey.slice(-4)}, X-RapidAPI-Host=jsearch.p.rapidapi.com`);
 
@@ -646,70 +648,57 @@ async function fetchJobsForUser(
     return { inserted: 0, skipped: 0, errors };
   }
 
-  // 4. Deduplicate — check which links already exist for this user in job_matches
-  const candidateLinks = allJobs.map((j) => j.link).filter(Boolean);
-  const { data: existing, error: existingError } = await supabase
-    .from('job_matches')
-    .select('link')
-    .eq('user_id', userId)
-    .in('link', candidateLinks);
+  // 4. Upsert all fetched jobs — conflict target is (user_id, link).
+  //    status / score / reasoning are intentionally excluded from the payload so
+  //    the DB never overwrites a user's 'accepted'/'dismissed' decision or an
+  //    existing AI score. New rows get those values from column defaults.
+  //    created_at is always set to now() so re-surfaced jobs sort to the top.
+  const rows = allJobs
+    .filter((j) => j.link)
+    .map((job) => ({
+      user_id: userId,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      description: job.description ?? '',
+      link: job.link,
+      source: job.source,
+      created_at: new Date().toISOString(),
+      // status / score / reasoning omitted — preserved by ON CONFLICT DO UPDATE
+    }));
 
-  if (existingError) {
-    const msg = `Failed to query existing jobs for ${userId}: ${existingError.message}`;
-    console.error(msg);
-    errors.push(msg);
-    // Continue with best-effort deduplication (existingLinks will be empty)
+  if (rows.length === 0) {
+    return { inserted: 0, skipped: 0, errors };
   }
 
-  const existingLinks = new Set((existing ?? []).map((r: any) => r.link));
-  const newJobs = allJobs.filter((j) => j.link && !existingLinks.has(j.link));
-  const skippedCount = allJobs.length - newJobs.length;
-
-  console.log(`[${userId}] New: ${newJobs.length} | Already in DB: ${skippedCount}`);
-
-  if (newJobs.length === 0) {
-    return { inserted: 0, skipped: skippedCount, errors };
+  for (const row of rows) {
+    console.log(`[DB] Upserted job: ${row.title}`);
   }
 
-  // 5. Insert new rows — score starts at 0 (scoring happens in a separate step)
-  const rows = newJobs.map((job) => ({
-    user_id: userId,
-    title: job.title,
-    company: job.company,
-    location: job.location,
-    description: job.description ?? '',
-    link: job.link,
-    source: job.source,
-    score: 0,
-    status: 'pending',
-    reasoning: { pros: [], cons: [], riskFactors: [] },
-    created_at: new Date().toISOString(),
-  }));
-
-  const { data: insertedRows, error: insertError } = await supabase
+  const { data: upsertedRows, error: upsertError } = await supabase
     .from('job_matches')
-    .insert(rows)
+    .upsert(rows, { onConflict: 'user_id,link' })
     .select('id, title, company, location, description, link');
 
-  if (insertError) {
-    const msg = `Insert failed for ${userId}: ${insertError.message}`;
+  console.log('Database Result:', { data: upsertedRows?.length ?? null, error: upsertError?.message ?? null });
+
+  if (upsertError) {
+    const msg = `Upsert failed for ${userId}: ${upsertError.message}`;
     console.error(msg);
     errors.push(msg);
-    return { inserted: 0, skipped: skippedCount, errors };
+    return { inserted: 0, skipped: 0, errors };
   }
 
-  const insertedCount = insertedRows?.length ?? 0;
-  console.log(`[${userId}] Inserted ${insertedCount} new job(s)`);
-  console.log(`DEBUG: Successfully processed ${insertedCount} jobs for user ${userId}`);
-
+  const insertedCount = upsertedRows?.length ?? 0;
+  console.log(`[${userId}] Upserted ${insertedCount} job(s)`);
   // ── Phase 3: AI Scout — score top 10 new jobs against the user's Master Profile
-  if (geminiApiKey && insertedRows && insertedRows.length > 0) {
-    await analyzeNewJobs(supabase, userId, insertedRows, keywords, geminiApiKey);
+  if (geminiApiKey && upsertedRows && upsertedRows.length > 0) {
+    await analyzeNewJobs(supabase, userId, upsertedRows, keywords, geminiApiKey);
   } else if (!geminiApiKey) {
     console.warn('[AI] GEMINI_API_KEY not configured — skipping AI analysis. Add it as a Supabase secret.');
   }
 
-  return { inserted: insertedCount, skipped: skippedCount, errors };
+  return { inserted: insertedCount, skipped: 0, errors };
 }
 
 // ── Broadcast: iterate all automation-enabled users ──────────────────────────
@@ -771,7 +760,7 @@ async function processAllUsers(
 // ── Request handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
-  console.log('--- DEPLOYMENT VERIFIED: VERSION 3.1 ---');
+  console.log('--- DEPLOYMENT VERIFIED: VERSION 3.4 ---');
   // CORS preflight — always first, outside try/catch
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -794,6 +783,10 @@ serve(async (req: Request) => {
     }
 
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    // Auth debug: log token shape so we can diagnose 401s from the cron SQL call
+    const isJwt = token.split('.').length === 3;
+    console.log(`Auth debug: header="${authHeader.slice(0, 15)}...", token length=${token.length}, looks like JWT=${isJwt}, serviceRoleKey length=${serviceRoleKey?.length ?? 0}`);
 
     // ── Service-role path — cron broadcast or targeted single user ────────────
     if (isServiceRoleToken(token, serviceRoleKey)) {
