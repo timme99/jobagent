@@ -157,7 +157,7 @@ async function fetchBAJobs(keywords: string, location: string): Promise<Normaliz
 // Maps location strings to ISO 3166-1 alpha-2 country codes for the JSearch country param.
 function getCountryCode(location: string): string {
   const loc = location.toLowerCase();
-  if (/germany|berlin|munich|münchen|hamburg|frankfurt|cologne|köln|düsseldorf|stuttgart/.test(loc)) return 'de';
+  if (/germany|deutschland|berlin|munich|münchen|hamburg|frankfurt|cologne|köln|düsseldorf|stuttgart/.test(loc)) return 'de';
   if (/spain|españa|madrid|barcelona|seville|sevilla|valencia/.test(loc)) return 'es';
   if (/france|paris|lyon|marseille|toulouse|bordeaux/.test(loc)) return 'fr';
   if (/netherlands|holland|amsterdam|rotterdam|den haag|eindhoven/.test(loc)) return 'nl';
@@ -186,7 +186,7 @@ function simplifyKeywordsForJSearch(keywords: string): string {
   return keywords
     .replace(/\bAND\b/gi, ' ')
     .replace(/\bOR\b/gi, ' ')
-    .replace(/[()]/g, ' ')
+    .replace(/[()"""'']/g, ' ')   // strip parentheses and all quote variants
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -771,7 +771,7 @@ async function processAllUsers(
 // ── Request handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
-  console.log('--- DEPLOYMENT VERIFIED: VERSION 3.1 ---');
+  console.log('--- DEPLOYMENT VERIFIED: VERSION 3.2 ---');
   // CORS preflight — always first, outside try/catch
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -794,6 +794,10 @@ serve(async (req: Request) => {
     }
 
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    // Auth debug: log token shape so we can diagnose 401s from the cron SQL call
+    const isJwt = token.split('.').length === 3;
+    console.log(`Auth debug: header="${authHeader.slice(0, 15)}...", token length=${token.length}, looks like JWT=${isJwt}, serviceRoleKey length=${serviceRoleKey?.length ?? 0}`);
 
     // ── Service-role path — cron broadcast or targeted single user ────────────
     if (isServiceRoleToken(token, serviceRoleKey)) {
