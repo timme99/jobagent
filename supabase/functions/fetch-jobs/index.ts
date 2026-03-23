@@ -719,8 +719,6 @@ async function processAllUsers(
   jsearchApiKey: string | null,
   geminiApiKey: string | null,
 ): Promise<Record<string, unknown>[]> {
-  console.log('--- CRON RUN STARTED ---');
-
   const { data: allSettings, error: settingsError } = await supabase
     .from('user_settings')
     .select('user_id, scan_keywords')
@@ -731,14 +729,20 @@ async function processAllUsers(
     return [{ error: 'Failed to load user_settings', details: settingsError.message }];
   }
 
-  console.log('Users found in DB:', allSettings?.length || 0);
+  const users = allSettings ?? [];
+  console.log(`[SYSTEM] Starting global scan for ${users.length} users....`);
 
   const results: Record<string, unknown>[] = [];
 
-  for (const s of allSettings ?? []) {
+  for (const s of users) {
     console.log('Processing user:', s.user_id, 'Keywords:', s.scan_keywords || '(none)');
-    const result = await fetchJobsForUser(supabase, s.user_id, jsearchApiKey, geminiApiKey);
-    results.push({ userId: s.user_id, ...result });
+    try {
+      const result = await fetchJobsForUser(supabase, s.user_id, jsearchApiKey, geminiApiKey);
+      results.push({ userId: s.user_id, ...result });
+    } catch (err: any) {
+      console.error(`[SYSTEM] Error processing user ${s.user_id}:`, err?.message ?? String(err));
+      results.push({ userId: s.user_id, error: err?.message ?? String(err) });
+    }
     await sleep(500); // avoid thundering-herd on external APIs
   }
 
