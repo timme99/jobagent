@@ -663,8 +663,10 @@ async function fetchJobsForUser(
       description: job.description ?? '',
       link: job.link,
       source: job.source,
-      created_at: new Date().toISOString(),
-      // status / score / reasoning omitted — preserved by ON CONFLICT DO UPDATE
+      // status / score / reasoning / created_at omitted — preserved by ON CONFLICT DO UPDATE
+      // created_at is intentionally omitted: new rows get the DB default (now()),
+      // existing rows keep their original discovery date so the Daily Digest
+      // does not treat re-surfaced jobs as brand-new every scan.
     }));
 
   if (rows.length === 0) {
@@ -760,7 +762,7 @@ async function processAllUsers(
 // ── Request handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
-  console.log('--- DEPLOYMENT VERIFIED: VERSION 3.4 ---');
+  console.log('--- DEPLOYMENT VERIFIED: VERSION 3.5 ---');
   // CORS preflight — always first, outside try/catch
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
